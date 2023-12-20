@@ -144,7 +144,9 @@ def train_dino(args):
         args.local_crops_scale,
         args.local_crops_number,
     )
-    dataset = get_dataset_from_string(args.data)
+    data_root = args.data.split(":")[1]
+    data = get_dataset_from_string(args.data)
+    dataset = data(data_root, image_transform=transform)
     # dataset = datasets.ImageFolder(args.data_path, transform=transform)
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(

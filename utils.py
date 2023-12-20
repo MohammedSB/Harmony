@@ -879,10 +879,9 @@ def multi_scale(samples, model):
 def get_dataset_from_string(string):
     keys = string.split(":")
     data = keys[0]
-    root = keys[1]
-
+    
     if data.upper() == "CC3M":
-        dataset = CC3M(root=root)
+        dataset = CC3M
     else:
         raise Exception(f"Dataset {data} is not available")
 
