@@ -34,6 +34,30 @@ import torch.distributed as dist
 from PIL import ImageFilter, Image, ImageOps
 from data import CC3M
 
+dataset_classes = {
+        "CC3M": CC3M,
+        "CALTECH101": datasets.Caltech101,
+        "CIFAR10": datasets.CIFAR10,
+        "CIFAR100": datasets.CIFAR100,
+        "FOOD101": datasets.Food101,
+        "EUROSAT": datasets.EuroSAT,
+        "COUNTRY211": datasets.Country211,
+        "DTD": datasets.DTD,
+        "FER-2013": datasets.FER2013,
+        "AIRCRAFT": datasets.fgvc_aircraft,
+        "GTSRB": datasets.GTSRB,
+        # "MEMES": datasets.HatefulMemes,
+        # "KITTUDIS": datasets.KittuDis,
+        "MNIST": datasets.MNIST,
+        "FLOWERS": datasets.Flowers102,
+        "PETS": datasets.OxfordIIITPet,
+        "PATCHCAM": datasets.PCAM,
+        "SST2": datasets.RenderedSST2,
+        # "RESISC45": datasets.RESISC45,
+        "CARS": datasets.StanfordCars,
+        # "VOC2007": datasets.VOC2007
+    }
+
 class DataAugmentationDINO(object):
     def __init__(self, global_crops_scale, local_crops_scale, local_crops_number):
         flip_and_color_jitter = transforms.Compose([
@@ -879,10 +903,10 @@ def multi_scale(samples, model):
 def get_dataset_from_string(string):
     keys = string.split(":")
     data = keys[0]
-    
-    if data.upper() == "CC3M":
-        dataset = CC3M
-    else:
+
+    try:
+        return dataset_classes[data]
+    except KeyError:
         raise Exception(f"Dataset {data} is not available")
 
     return dataset

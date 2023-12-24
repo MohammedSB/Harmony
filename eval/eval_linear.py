@@ -26,6 +26,7 @@ from torchvision import transforms as pth_transforms
 from torchvision import models as torchvision_models
 
 import utils
+from utils import get_dataset_from_string
 import vision_transformer as vits
 
 
@@ -89,6 +90,9 @@ def eval_linear(args):
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
+
+    data = get_dataset_from_string(args.data)
+
     dataset_train = datasets.ImageFolder(os.path.join(args.data_path, "train"), transform=train_transform)
     sampler = torch.utils.data.distributed.DistributedSampler(dataset_train)
     train_loader = torch.utils.data.DataLoader(
@@ -253,7 +257,7 @@ class LinearClassifier(nn.Module):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Evaluation with linear classification on ImageNet')
+    parser = argparse.ArgumentParser('Evaluation with linear classification')
     parser.add_argument('--n_last_blocks', default=4, type=int, help="""Concatenate [CLS] tokens
         for the `n` last blocks. We use `n=4` when evaluating ViT-Small and `n=1` with ViT-Base.""")
     parser.add_argument('--avgpool_patchtokens', default=False, type=utils.bool_flag,
@@ -272,7 +276,7 @@ if __name__ == '__main__':
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
     parser.add_argument("--local_rank", default=0, type=int, help="Please ignore and do not set this argument.")
-    parser.add_argument('--data_path', default='/path/to/imagenet/', type=str)
+    parser.add_argument('--data', default='ImageNet:/path/to/imagenet/', type=str)
     parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument('--val_freq', default=1, type=int, help="Epoch frequency for validation.")
     parser.add_argument('--output_dir', default=".", help='Path to save logs and checkpoints')
