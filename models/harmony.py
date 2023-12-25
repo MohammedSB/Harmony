@@ -1,13 +1,6 @@
 import torch
-import torch.nn as nn
-import torch.distributed as dist
-import torch.backends.cudnn as cudnn
-import torch.nn.functional as F
-from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 
-import utils
-from utils import DataAugmentationDINO, get_dataset_from_string
 import vision_transformer as vits
 from .generative import GenerativePath
 from .discriminative import DiscriminativePath
@@ -35,23 +28,35 @@ class Harmony(torch.nn.Module):
 
         self.meta['embed_dim'] = self.image_encoder.embed_dim
        
+        # initialize the variables
+        self.is_discriminative = False
+        self.is_generative = False
+
         if "dino" in self.objective:
-            self.discrimitavie_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta)
+            self.discrimitavie_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
             self.is_discriminative = True
+
         if "mae" in self.objective:
-            self.generative_path = GenerativePath(image_encoder=self.image_encoder)
+            self.generative_path = GenerativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
             self.is_generative = True
 
-
     def forward(self, images, epoch):
+        loss = torch.tensor([0.0]).to(self.meta['gpu'])
+        outputs = {"loss": loss}
         if self.is_discriminative:
-            disc_output = self.discrimitavie_path(images, epoch)
-            teacher_output = disc_output["teacher_output"]
-            student_output = disc_output["student_output"]
-            disc_loss = disc_output["loss"]
+            output = self.discrimitavie_path(images, epoch)
+            
+            outputs["teacher_output"] = output["teacher_output"]
+            outputs["teacher_output"] = output["student_output"]
+            outputs["disc_loss"] = output["loss"]
+            outputs["loss"] += output["loss"]
 
-        return {
-            "teacher_output": teacher_output,
-            "student_output": student_output,
-            "disc_loss": disc_loss,
-        }
+        if self.is_generative:
+            output = self.generative_path(images[0]) # image[0] is a simply augmented image
+            
+            outputs["pred"] = output["output"]
+            outputs["mask"] = output["mask"]
+            outputs["gen_loss"] = output["loss"]
+            outputs["loss"] += output["loss"]
+
+        return outputs

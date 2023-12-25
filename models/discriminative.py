@@ -20,12 +20,13 @@ class DiscriminativePath(nn.Module):
         self.teacher = vits.__dict__[self.meta['arch']](patch_size=self.meta['patch_size'])
 
         # multi-crop wrapper handles forward with inputs of different resolutions
-        self.student = utils.MultiCropWrapper(self.image_encoder, DINOHead(
+        self.student_head = DINOHead(
             self.meta['embed_dim'],
             self.meta['out_dim'],
             use_bn=self.meta['use_bn_in_head'],
             norm_last_layer=self.meta['norm_last_layer'],
-        ))
+        )
+        self.student = utils.MultiCropWrapper(self.image_encoder, self.student_head)
         self.teacher = utils.MultiCropWrapper(
             self.teacher,
             DINOHead(self.meta['embed_dim'], self.meta['out_dim'], self.meta['use_bn_in_head']),
@@ -64,8 +65,8 @@ class DiscriminativePath(nn.Module):
             ).cuda()
 
     def forward(self, images, epoch):
-        teacher_output = self.teacher(images[:2])  # only the 2 global views pass through the teacher
-        student_output = self.student(images)
+        teacher_output = self.teacher(images[1:3])  # only the 2 global views pass through the teacher
+        student_output = self.student(images[1:])
 
         loss = self.loss(student_output, teacher_output, epoch)
 

@@ -31,7 +31,7 @@ from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 
 import utils
-from utils import DataAugmentationDINO, get_dataset_from_string
+from utils import DataAugmentation, get_dataset_from_string
 import vision_transformer as vits
 from models import Harmony
 from vision_transformer import DINOHead
@@ -144,7 +144,7 @@ def train(args):
     cudnn.benchmark = True
 
     # ============ preparing data ... ============
-    transform = DataAugmentationDINO(
+    transform = DataAugmentation(
         args.global_crops_scale,
         args.local_crops_scale,
         args.local_crops_number,
@@ -153,7 +153,6 @@ def train(args):
     data = get_dataset_from_string(args.data)
     dataset = data(data_root, image_transform=transform)
     
-    # dataset = datasets.ImageFolder(args.data_path, transform=transform)
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
         dataset,
@@ -168,8 +167,7 @@ def train(args):
     model = Harmony(args=args)
 
     # ============ preparing optimizer ... ============
-    # params_groups = utils.get_params_groups(student)
-    params_groups = utils.get_params_groups(model.discrimitavie_path.student)
+    params_groups = utils.get_params_groups(model)
     if args.optimizer == "adamw":
         optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
     elif args.optimizer == "sgd":
@@ -264,7 +262,8 @@ def train_one_epoch(model, data_loader,
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             model_output = model(images, epoch)
-            loss = model_output['disc_loss']
+            disc_loss, gen_loss = model_output["disc_loss"], model_output["gen_loss"]
+            loss = model_output["loss"]
 
         if not math.isfinite(loss.item()):
             print("Loss is {}, stopping training".format(loss.item()), force=True)
@@ -290,15 +289,18 @@ def train_one_epoch(model, data_loader,
             fp16_scaler.step(optimizer)
             fp16_scaler.update()
 
-        # EMA update for the teacher
-        with torch.no_grad():
-            m = momentum_schedule[it]  # momentum parameter
-            for param_q, param_k in zip(model.discrimitavie_path.student.module.parameters(), model.discrimitavie_path.teacher_without_ddp.parameters()):
-                param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+        if model.is_discriminative:
+            # EMA update for the teacher
+            with torch.no_grad():
+                m = momentum_schedule[it]  # momentum parameter
+                for param_q, param_k in zip(model.discrimitavie_path.student.module.parameters(), model.discrimitavie_path.teacher_without_ddp.parameters()):
+                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
 
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())
+        metric_logger.update(discriminative_loss=disc_loss.item())
+        metric_logger.update(generative_loss=gen_loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
     # gather the stats from all processes
@@ -308,7 +310,7 @@ def train_one_epoch(model, data_loader,
     
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('DINO', parents=[get_args_parser()])
+    parser = argparse.ArgumentParser('HARMONY', parents=[get_args_parser()])
     args = parser.parse_args()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     train(args)

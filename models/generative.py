@@ -4,19 +4,23 @@ import torch.nn as nn
 from timm.models.vision_transformer import PatchEmbed, Block
 from vision_transformer import Block
 
-# from util.pos_embed import get_2d_sincos_pos_embed
+from utils import get_2d_sincos_pos_embed
+from losses import mae_loss
 
 class GenerativePath(nn.Module):
-    def __init__(self, image_encoder, img_size=224, patch_size=16, in_chans=3,
-                embed_dim=1024, depth=24, num_heads=16,
+    def __init__(self, image_encoder, meta, patch_size=16, in_chans=3,
                 decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
+                mlp_ratio=4, norm_layer=nn.LayerNorm, norm_pix_loss=False):
         super().__init__()
-
         self.image_encoder = image_encoder
+        self.meta = meta
 
+        self.norm_pix_loss = norm_pix_loss
+        self.patch_embed = image_encoder.patch_embed
+        num_patches = self.image_encoder.patch_embed.num_patches
 
-        self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
+        # make mae decoder
+        self.decoder_embed = nn.Linear(self.meta['embed_dim'], decoder_embed_dim, bias=True)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
@@ -39,7 +43,7 @@ class GenerativePath(nn.Module):
         imgs: (N, 3, H, W)
         x: (N, L, patch_size**2 *3)
         """
-        p = self.patch_embed.patch_size[0]
+        p = self.patch_embed.patch_size
         assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
 
         h = w = imgs.shape[2] // p
@@ -53,7 +57,7 @@ class GenerativePath(nn.Module):
         x: (N, L, patch_size**2 *3)
         imgs: (N, 3, H, W)
         """
-        p = self.patch_embed.patch_size[0]
+        p = self.patch_embed.patch_size
         h = w = int(x.shape[1]**.5)
         assert h * w == x.shape[1]
         
@@ -91,23 +95,23 @@ class GenerativePath(nn.Module):
 
     def forward_encoder(self, x, mask_ratio):
         # embed patches
-        x = self.patch_embed(x)
+        x = self.image_encoder.patch_embed(x)
 
         # add pos embed w/o cls token
-        x = x + self.pos_embed[:, 1:, :]
+        x = x + self.image_encoder.pos_embed[:, 1:, :]
 
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
         # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        cls_token = self.image_encoder.cls_token + self.image_encoder.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
 
         # apply Transformer blocks
-        for blk in self.blocks:
+        for blk in self.image_encoder.blocks:
             x = blk(x)
-        x = self.norm(x)
+        x = self.image_encoder.norm(x)
 
         return x, mask, ids_restore
 
@@ -137,26 +141,14 @@ class GenerativePath(nn.Module):
 
         return x
 
-    def forward_loss(self, imgs, pred, mask):
-        """
-        imgs: [N, 3, H, W]
-        pred: [N, L, p*p*3]
-        mask: [N, L], 0 is keep, 1 is remove, 
-        """
-        target = self.patchify(imgs)
-        if self.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.e-6)**.5
-
-        loss = (pred - target) ** 2
-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-
-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-        return loss
-
     def forward(self, imgs, mask_ratio=0.75):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
-        loss = self.forward_loss(imgs, pred, mask)
-        return loss, pred, mask
+
+        loss = mae_loss(self.patchify(imgs), pred, mask, self.norm_pix_loss)
+        
+        return {
+            "output": pred,
+            "mask": mask,
+            "loss": loss   
+        }
