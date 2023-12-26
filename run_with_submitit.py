@@ -20,12 +20,12 @@ import os
 import uuid
 from pathlib import Path
 
-import main
+import main_harmony
 import submitit
 
 
 def parse_args():
-    parser = argparse.ArgumentParser("Submitit for DINO", parents=[main.get_args_parser()])
+    parser = argparse.ArgumentParser("Submitit for DINO", parents=[main_harmony.get_args_parser()])
     parser.add_argument("--ngpus", default=8, type=int, help="Number of gpus to request on each node")
     parser.add_argument("--nodes", default=2, type=int, help="Number of nodes to request")
     parser.add_argument("--timeout", default=2800, type=int, help="Duration of the job")
@@ -38,12 +38,15 @@ def parse_args():
 
 
 def get_shared_folder() -> Path:
-    user = os.getenv("USER")
-    if Path("/checkpoint/").is_dir():
-        p = Path(f"/checkpoint/{user}/experiments")
-        p.mkdir(exist_ok=True)
-        return p
-    raise RuntimeError("No shared folder available")
+    user = os.getenv("USER", default='user')
+    cur_file_path = Path("checkpoint").absolute()
+    print(cur_file_path)
+    p = Path(f"{cur_file_path}/{user}/experiments")
+    try:
+        p.mkdir(exist_ok=True, parents=True)
+        return p 
+    except NotADirectoryError:
+        raise RuntimeError("No shared folder available")
 
 
 def get_init_file():
@@ -60,10 +63,10 @@ class Trainer(object):
         self.args = args
 
     def __call__(self):
-        import main
+        import main_harmony
 
         self._setup_gpu_args()
-        main.train(self.args)
+        main_harmony.train(self.args)
 
     def checkpoint(self):
         import os

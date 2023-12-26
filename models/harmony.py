@@ -42,7 +42,10 @@ class Harmony(torch.nn.Module):
 
     def forward(self, images, epoch):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
-        outputs = {"loss": loss}
+        outputs = {"loss": loss,
+                   "disc_loss": torch.zeros(1),
+                   "gen_loss": torch.zeros(1)}
+
         if self.is_discriminative:
             output = self.discrimitavie_path(images, epoch)
             
