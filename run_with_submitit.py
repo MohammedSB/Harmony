@@ -34,13 +34,14 @@ def parse_args():
     parser.add_argument("--use_volta32", action='store_true', help="Big models? Use this")
     parser.add_argument('--comment', default="", type=str,
                         help='Comment to pass to scheduler, e.g. priority message')
+    parser.add_argument("--constraint", default="v100", type=str)
+    parser.add_argument("--mem", default="200GB", type=str)
     return parser.parse_args()
 
 
 def get_shared_folder() -> Path:
     user = os.getenv("USER", default='user')
     cur_file_path = Path("checkpoint").absolute()
-    print(cur_file_path)
     p = Path(f"{cur_file_path}/{user}/experiments")
     try:
         p.mkdir(exist_ok=True, parents=True)
@@ -117,6 +118,10 @@ def main():
         # Below are cluster dependent parameters
         slurm_partition=partition,
         slurm_signal_delay_s=120,
+        slurm_additional_parameters={
+            'mem': args.mem,
+            'constraint': args.constraint,
+        } 
         **kwargs
     )
 
