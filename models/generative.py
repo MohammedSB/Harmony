@@ -8,7 +8,7 @@ from utils import get_2d_sincos_pos_embed
 from losses import mae_loss
 
 class GenerativePath(nn.Module):
-    def __init__(self, image_encoder, meta, patch_size=16, in_chans=3,
+    def __init__(self, image_encoder, meta, in_chans=3,
                 decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                 mlp_ratio=4, norm_layer=nn.LayerNorm, norm_pix_loss=False):
         super().__init__()
@@ -29,7 +29,7 @@ class GenerativePath(nn.Module):
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+        self.decoder_pred = nn.Linear(decoder_embed_dim, self.meta["patch_size"]**2 * in_chans, bias=True) # decoder to patch
 
     def initialize_deocder_weights(self):
         

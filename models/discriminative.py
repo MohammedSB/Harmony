@@ -65,8 +65,8 @@ class DiscriminativePath(nn.Module):
             ).cuda()
 
     def forward(self, images, epoch):
-        teacher_output = self.teacher(images[1:3])  # only the 2 global views pass through the teacher
-        student_output = self.student(images[1:])
+        teacher_output = self.teacher(images[:2])  # only the 2 global views pass through the teacher
+        student_output = self.student(images)
 
         loss = self.loss(student_output, teacher_output, epoch)
 

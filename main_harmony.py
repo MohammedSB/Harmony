@@ -68,7 +68,7 @@ def get_args_parser():
     parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
         help="Whether to use batch normalizations in projection head (Default: False)")
     parser.add_argument('--objective', default='dino', type=str,
-        choices=['dino', 'mae', 'dino_mae', 'harmony'],
+        choices=['dino', 'mae', 'dino_mae', 'mae_dino' 'harmony'],
         help="The method to use for training the model")
 
     # Temperature teacher parameters
@@ -290,6 +290,7 @@ def train_one_epoch(model, data_loader,
             fp16_scaler.update()
 
         if model.is_discriminative:
+
             # EMA update for the teacher
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter

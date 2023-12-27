@@ -47,7 +47,7 @@ class Harmony(torch.nn.Module):
                    "gen_loss": torch.zeros(1)}
 
         if self.is_discriminative:
-            output = self.discrimitavie_path(images, epoch)
+            output = self.discrimitavie_path(images[1:], epoch)
             
             outputs["teacher_output"] = output["teacher_output"]
             outputs["teacher_output"] = output["student_output"]
