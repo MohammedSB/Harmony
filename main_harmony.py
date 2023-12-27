@@ -201,11 +201,10 @@ def train(args):
     utils.restart_from_checkpoint(
         os.path.join(args.output_dir, "checkpoint.pth"),
         run_variables=to_restore,
-        student=model.discrimitavie_path.student,
-        teacher=model.discrimitavie_path.teacher,
+        model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        dino_loss=model.discrimitavie_path.loss,
+        dino_loss=model.discrimitavie_path.loss if model.is_discriminative else None,
     )
     start_epoch = to_restore["epoch"]
 
@@ -221,12 +220,11 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'student': model.discrimitavie_path.student.state_dict(),
-            'teacher': model.discrimitavie_path.teacher.state_dict(),
+            'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'dino_loss': model.discrimitavie_path.loss.state_dict(),
+            'dino_loss': model.discrimitavie_path.loss.state_dict() if model.is_discriminative else None,
         }
 
         if fp16_scaler is not None:
@@ -290,7 +288,6 @@ def train_one_epoch(model, data_loader,
             fp16_scaler.update()
 
         if model.is_discriminative:
-
             # EMA update for the teacher
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter

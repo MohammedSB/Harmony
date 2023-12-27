@@ -29,6 +29,7 @@ import utils
 from utils import get_dataset_from_string
 import vision_transformer as vits
 
+from models import Harmony 
 
 def eval_linear(args):
     utils.init_distributed_mode(args)
@@ -37,24 +38,12 @@ def eval_linear(args):
     cudnn.benchmark = True
 
     # ============ building network ... ============
-    # if the network is a Vision Transformer (i.e. vit_tiny, vit_small, vit_base)
-    if args.arch in vits.__dict__.keys():
-        model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
-        embed_dim = model.embed_dim * (args.n_last_blocks + int(args.avgpool_patchtokens))
-    # if the network is a XCiT
-    elif "xcit" in args.arch:
-        model = torch.hub.load('facebookresearch/xcit:main', args.arch, num_classes=0)
-        embed_dim = model.embed_dim
-    # otherwise, we check if the architecture is in torchvision models
-    elif args.arch in torchvision_models.__dict__.keys():
-        model = torchvision_models.__dict__[args.arch]()
-        embed_dim = model.fc.weight.shape[1]
-        model.fc = nn.Identity()
-    else:
-        print(f"Unknow architecture: {args.arch}")
-        sys.exit(1)
+    model = Harmony(args)
     model.cuda()
     model.eval()
+
+    embed_dim = model.meta['embed_dim']
+
     # load weights to evaluate
     utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
     print(f"Model {args.arch} built.")
