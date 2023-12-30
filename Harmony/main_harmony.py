@@ -147,8 +147,6 @@ def train(args):
     # ============ saving argument settings ... ============
     with open("{}/settings.pkl".format(args.output_dir), 'wb') as file:
         print("saving run setting")
-        print(file)
-        print(args.output_dir)
         pickle.dump(dict(vars(args)), file)
 
     # ============ preparing data ... ============
@@ -229,6 +227,7 @@ def train(args):
         # ============ writing logs ... ============
         save_dict = {
             'model': model.state_dict(),
+            'main_vit': model.discrimitavie_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict(), # main resulting vit
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,

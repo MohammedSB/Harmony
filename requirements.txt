@@ -1,7 +1,7 @@
 numpy
 pandas
 --extra-index-url https://download.pytorch.org/whl/cu117
-torch==2.0.0
+torch==2.0.1+cu117
 torchvision==0.15.0
 submitit
 --extra-index-url https://pypi.nvidia.com
