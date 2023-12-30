@@ -210,7 +210,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        dino_loss=model.discrimitavie_path.loss if model.is_discriminative else None,
+        dino_loss=model.discriminative_path.loss if model.is_discriminative else None,
     )
     start_epoch = to_restore["epoch"]
 
@@ -227,11 +227,11 @@ def train(args):
         # ============ writing logs ... ============
         save_dict = {
             'model': model.state_dict(),
-            'main_vit': model.discrimitavie_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict(), # main resulting vit
+            'main_vit': model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict(), # main resulting vit
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'dino_loss': model.discrimitavie_path.loss.state_dict() if model.is_discriminative else None,
+            'dino_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
         }
 
         if fp16_scaler is not None:
@@ -280,16 +280,16 @@ def train_one_epoch(model, data_loader,
         if fp16_scaler is None:
             loss.backward()
             if args.clip_grad:
-                param_norms = utils.clip_gradients(model.discrimitavie_path.student, args.clip_grad)
-            utils.cancel_gradients_last_layer(epoch, model.discrimitavie_path.student,
+                param_norms = utils.clip_gradients(model.discriminative_path.student, args.clip_grad)
+            utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
                                               args.freeze_last_layer)
             optimizer.step()
         else:
             fp16_scaler.scale(loss).backward()
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-                param_norms = utils.clip_gradients(model.discrimitavie_path.student, args.clip_grad)
-            utils.cancel_gradients_last_layer(epoch, model.discrimitavie_path.student,
+                param_norms = utils.clip_gradients(model.discriminative_path.student, args.clip_grad)
+            utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
                                               args.freeze_last_layer)
             fp16_scaler.step(optimizer)
             fp16_scaler.update()
@@ -298,7 +298,7 @@ def train_one_epoch(model, data_loader,
             # EMA update for the teacher
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter
-                for param_q, param_k in zip(model.discrimitavie_path.student.module.parameters(), model.discrimitavie_path.teacher_without_ddp.parameters()):
+                for param_q, param_k in zip(model.discriminative_path.student.module.parameters(), model.discriminative_path.teacher_without_ddp.parameters()):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
 
         # logging

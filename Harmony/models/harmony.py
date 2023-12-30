@@ -33,7 +33,7 @@ class Harmony(torch.nn.Module):
         self.is_generative = False
 
         if "dino" in self.objective:
-            self.discrimitavie_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
+            self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
             self.is_discriminative = True
 
         if "mae" in self.objective:
@@ -47,7 +47,7 @@ class Harmony(torch.nn.Module):
                    "gen_loss": torch.zeros(1)}
 
         if self.is_discriminative:
-            output = self.discrimitavie_path(images[1:], epoch)
+            output = self.discriminative_path(images[1:], epoch)
             
             outputs["teacher_output"] = output["teacher_output"]
             outputs["teacher_output"] = output["student_output"]
