@@ -296,4 +296,5 @@ if __name__ == '__main__':
     parser.add_argument('--evaluate', dest='evaluate', action='store_true', help='evaluate model on validation set')
     parser.add_argument('--settings_path', type=str, help='Path for the file that stores training run settings')
     args = parser.parse_args()
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     eval_linear(args)
