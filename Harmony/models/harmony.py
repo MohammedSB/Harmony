@@ -51,8 +51,8 @@ class Harmony(torch.nn.Module):
             
             outputs["teacher_output"] = output["teacher_output"]
             outputs["teacher_output"] = output["student_output"]
-            outputs["disc_loss"] = output["loss"]
-            outputs["loss"] += output["loss"]
+            outputs["disc_loss"] = (output["loss"] * self.meta["disc_weight"])
+            outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
 
         if self.is_generative:
             output = self.generative_path(images[0]) # image[0] is a simply augmented image

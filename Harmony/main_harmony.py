@@ -69,7 +69,7 @@ def get_args_parser():
     parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
         help="Whether to use batch normalizations in projection head (Default: False)")
     parser.add_argument('--objective', default='dino', type=str,
-        choices=['dino', 'mae', 'dino_mae', 'mae_dino' 'harmony'],
+        choices=['dino', 'dino_mae', 'mae_dino' 'harmony'],
         help="The method to use for training the model")
 
     # Temperature teacher parameters
@@ -87,6 +87,7 @@ def get_args_parser():
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
+    parser.add_argument('--disc_weight', type=float, default=1, help="""Loss scaling for discriminative path""")
     parser.add_argument('--weight_decay', type=float, default=0.04, help="""Initial value of the
         weight decay. With ViT, a smaller value at the beginning of training works well.""")
     parser.add_argument('--weight_decay_end', type=float, default=0.4, help="""Final value of the
@@ -210,7 +211,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        dino_loss=model.discriminative_path.loss if model.is_discriminative else None,
+        disc_loss=model.discriminative_path.loss if model.is_discriminative else None,
     )
     start_epoch = to_restore["epoch"]
 
@@ -231,14 +232,19 @@ def train(args):
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'dino_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
+            'disc_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
         }
+
+        # saving main vit separately
+        main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict()
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
+        utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
         if args.saveckp_freq and epoch % args.saveckp_freq == 0:
             utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
+            utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint{epoch:04}.pth'))
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch}
         if utils.is_main_process():
