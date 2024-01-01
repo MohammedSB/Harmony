@@ -244,7 +244,7 @@ def train(args):
         utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
         if args.saveckp_freq and epoch % args.saveckp_freq == 0:
             utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
-            utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint{epoch:04}.pth'))
+            utils.save_on_master(main_vit, os.path.join(args.output_dir, f'main_vit_checkpoint{epoch:04}.pth'))
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch}
         if utils.is_main_process():
