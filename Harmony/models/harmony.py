@@ -22,7 +22,9 @@ class Harmony(torch.nn.Module):
             self.image_encoder = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
                 drop_path_rate=self.meta['drop_path_rate'] if hasattr(self.meta, 'drop_path_rate') else 0,  # stochastic depth
-            )            
+                return_all_tokens=True if "ibot" in self.objective else False,
+                masked_im_modeling=self.meta['use_masked_im_modeling']
+            )
         except:
             raise Exception(f"Unknow arch: {self.meta['arch']}")
 
@@ -32,7 +34,7 @@ class Harmony(torch.nn.Module):
         self.is_discriminative = False
         self.is_generative = False
 
-        if "dino" in self.objective:
+        if "dino" in self.objective or "ibot" in self.objective:
             self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
             self.is_discriminative = True
 
@@ -40,14 +42,14 @@ class Harmony(torch.nn.Module):
             self.generative_path = GenerativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
             self.is_generative = True
 
-    def forward(self, images, epoch):
+    def forward(self, images, epoch, masks):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
         outputs = {"loss": loss,
                    "disc_loss": torch.zeros(1),
                    "gen_loss": torch.zeros(1)}
 
         if self.is_discriminative:
-            output = self.discriminative_path(images[1:], epoch)
+            output = self.discriminative_path(images[1:], epoch, masks)
             
             outputs["teacher_output"] = output["teacher_output"]
             outputs["teacher_output"] = output["student_output"]

@@ -35,8 +35,7 @@ import utils
 from utils import DataAugmentation, get_dataset_from_string
 import vision_transformer as vits
 from models import Harmony
-from vision_transformer import DINOHead
-from losses import DINOLoss
+from Harmony.data import IBOTLoaderWrapper
 
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -44,7 +43,7 @@ torchvision_archs = sorted(name for name in torchvision_models.__dict__
     and callable(torchvision_models.__dict__[name]))
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('DINO', add_help=False)
+    parser = argparse.ArgumentParser('Harmony', add_help=False)
 
     # Model parameters
     parser.add_argument('--arch', default='vit_small', type=str,
@@ -59,6 +58,13 @@ def get_args_parser():
         mixed precision training (--use_fp16 false) to avoid unstabilities.""")
     parser.add_argument('--out_dim', default=65536, type=int, help="""Dimensionality of
         the DINO head output. For complex and large datasets large values (like 65k) work well.""")
+    parser.add_argument('--patch_out_dim', default=8192, type=int, help="""Dimensionality of
+        output for patch tokens.""")
+    parser.add_argument('--shared_head', default=False, type=utils.bool_flag, help="""Wether to share 
+        the same head for [CLS] token output and patch tokens output. When set to false, patch_out_dim
+        is ignored and enforced to be same with out_dim. (Default: False)""")
+    parser.add_argument('--shared_head_teacher', default=True, type=utils.bool_flag, help="""See above.
+        Only works for teacher model. (Defeault: True)""")
     parser.add_argument('--norm_last_layer', default=True, type=utils.bool_flag,
         help="""Whether or not to weight normalize the last layer of the DINO head.
         Not normalizing leads to better performance but can make the training unstable.
@@ -66,10 +72,27 @@ def get_args_parser():
     parser.add_argument('--momentum_teacher', default=0.996, type=float, help="""Base EMA
         parameter for teacher update. The value is increased to 1 during training with cosine schedule.
         We recommend setting a higher value with small batches: for example use 0.9995 with batch size of 256.""")
-    parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
-        help="Whether to use batch normalizations in projection head (Default: False)")
+    parser.add_argument('--norm_in_head', default=None,
+        help="Norm to use in head for discriminative path (Default: None)")
+    parser.add_argument('--act_in_head', default='gelu',
+        help="Whether to use batch normalizations in projection head (Default: gelu)")
+    parser.add_argument('--use_masked_im_modeling', default=True, type=utils.bool_flag,
+        help="Whether to use masked image modeling (mim) in backbone (Default: True)")
+    parser.add_argument('--pred_ratio', default=0.3, type=float, nargs='+', help="""Ratio of partial prediction.
+        If a list of ratio is specified, one of them will be randomly choosed for each patch.""")
+    parser.add_argument('--pred_ratio_var', default=0, type=float, nargs='+', help="""Variance of partial prediction
+        ratio. Length should be indentical to the length of pred_ratio. 0 for disabling. """)
+    parser.add_argument('--pred_shape', default='block', type=str, help="""Shape of partial prediction.""")
+    parser.add_argument('--pred_start_epoch', default=0, type=int, help="""Start epoch to perform masked
+        image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
+    # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
+    #     help="Whether to use batch normalizations in projection head (Default: False)")
+    parser.add_argument('--lambda1', default=1.0, type=float, help="""loss weight for dino
+        loss over [CLS] tokens (Default: 1.0)""")
+    parser.add_argument('--lambda2', default=1.0, type=float, help="""loss weight for beit 
+        loss over masked patch tokens (Default: 1.0)""")
     parser.add_argument('--objective', default='dino', type=str,
-        choices=['dino', 'dino_mae', 'mae_dino' 'harmony'],
+        choices=['dino', 'ibot', 'dino_mae', 'mae_dino' 'harmony'],
         help="The method to use for training the model")
 
     # Temperature teacher parameters
@@ -79,6 +102,10 @@ def get_args_parser():
     parser.add_argument('--teacher_temp', default=0.04, type=float, help="""Final value (after linear warmup)
         of the teacher temperature. For most experiments, anything above 0.07 is unstable. We recommend
         starting with the default value of 0.04 and increase this slightly if needed.""")
+    parser.add_argument('--warmup_teacher_patch_temp', default=0.04, type=float, help="""See 
+        `--warmup_teacher_temp`""")
+    parser.add_argument('--teacher_patch_temp', default=0.07, type=float, help=""""See 
+        `--teacher_temp`""")
     parser.add_argument('--warmup_teacher_temp_epochs', default=0, type=int,
         help='Number of warmup epochs for the teacher temperature (Default: 30).')
 
@@ -114,6 +141,8 @@ def get_args_parser():
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
 
     # Multi-crop parameters
+    parser.add_argument('--global_crops_number', type=int, default=2, help="""Number of global
+        views to generate. Default is to use two global crops. """)
     parser.add_argument('--global_crops_scale', type=float, nargs='+', default=(0.4, 1.),
         help="""Scale range of the cropped image before resizing, relatively to the origin image.
         Used for large global view cropping. When disabling multi-crop (--local_crops_number 0), we
@@ -139,6 +168,10 @@ def get_args_parser():
 
 
 def train(args):
+    # adjust args for dino
+    if "dino" in args.objective:
+        args.use_masked_im_modeling = False
+
     utils.init_distributed_mode(args)
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
@@ -154,11 +187,24 @@ def train(args):
     transform = DataAugmentation(
         args.global_crops_scale,
         args.local_crops_scale,
+        args.global_crops_number, # for IBot
         args.local_crops_number,
+        args.objective,
     )
     data_root = args.data.split(":")[1]
     data = get_dataset_from_string(args.data)
     dataset = data(data_root, transform=transform)
+
+    if "ibot" in args.objective:
+        dataset = IBOTLoaderWrapper(
+            dataset=dataset,
+            patch_size=args.patch_size,
+            pred_ratio=args.pred_ratio,
+            pred_ratio_var=args.pred_ratio_var,
+            pred_aspect_ratio=(0.3, 1/0.3),
+            pred_shape=args.pred_shape,
+            pred_start_epoch=args.pred_start_epoch
+        )
     
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
@@ -219,6 +265,8 @@ def train(args):
     print("Starting training !")
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
+        if args.objective == "ibot":
+            data_loader.dataset.set_epoch(epoch)
 
         # ============ training one epoch ... ============        
         train_stats = train_one_epoch(model, data_loader, optimizer,
@@ -260,7 +308,32 @@ def train_one_epoch(model, data_loader,
                     fp16_scaler, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
-    for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+
+    # common params
+    names_q, params_q, names_k, params_k = [], [], [], []
+    for name_q, param_q in model.discriminative_path.student.module.named_parameters():
+        names_q.append(name_q)
+        params_q.append(param_q)
+    for name_k, param_k in model.discriminative_path.teacher_without_ddp.named_parameters():
+        names_k.append(name_k)
+        params_k.append(param_k)
+    names_common = list(set(names_q) & set(names_k))
+    params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
+    params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
+
+
+    for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
+
+        if len(data) == 3:
+            images, captions, masks = data
+            masks = [m.cuda(non_blocking=True) for m in masks]            
+        elif len(data) == 2:
+            images, captions = data
+            masks = None
+        
+        # move images to gpu
+        images = [im.cuda(non_blocking=True) for im in images]
+
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
         for i, param_group in enumerate(optimizer.param_groups):
@@ -268,11 +341,9 @@ def train_one_epoch(model, data_loader,
             if i == 0:  # only the first group is regularized
                 param_group["weight_decay"] = wd_schedule[it]
 
-        # move images to gpu
-        images = [im.cuda(non_blocking=True) for im in images]
-        # teacher and student forward passes + compute dino loss
+        # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            model_output = model(images, epoch)
+            model_output = model(images, epoch, masks=masks)
             disc_loss, gen_loss = model_output["disc_loss"], model_output["gen_loss"]
             loss = model_output["loss"]
 
@@ -304,7 +375,7 @@ def train_one_epoch(model, data_loader,
             # EMA update for the teacher
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter
-                for param_q, param_k in zip(model.discriminative_path.student.module.parameters(), model.discriminative_path.teacher_without_ddp.parameters()):
+                for param_q, param_k in zip(params_q, params_k):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
 
         # logging
@@ -314,6 +385,8 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(generative_loss=gen_loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
+    
+    
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)

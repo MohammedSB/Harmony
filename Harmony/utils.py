@@ -60,7 +60,8 @@ dataset_classes = {
     }
 
 class DataAugmentation(object):
-    def __init__(self, global_crops_scale, local_crops_scale, local_crops_number):
+    def __init__(self, global_crops_scale, local_crops_scale, global_crops_number, local_crops_number, objective):
+        self.objective = objective
         flip_and_color_jitter = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
@@ -80,6 +81,8 @@ class DataAugmentation(object):
             transforms.RandomHorizontalFlip(),
             normalize
         ])
+
+        self.global_crops_number = global_crops_number
 
         # first global crop
         self.global_transfo1 = transforms.Compose([
@@ -106,12 +109,22 @@ class DataAugmentation(object):
         ])
 
     def __call__(self, image):
+        
         crops = []
         crops.append(self.simple_aug(image))
-        crops.append(self.global_transfo1(image))
-        crops.append(self.global_transfo2(image))
-        for _ in range(self.local_crops_number):
-            crops.append(self.local_transfo(image))
+
+        if "ibot" in self.objective:
+            crops.append(self.global_transfo1(image))
+            for _ in range(self.global_crops_number - 1):
+                crops.append(self.global_transfo2(image))
+            for _ in range(self.local_crops_number):
+                crops.append(self.local_transfo(image))
+        elif "dino" in self.objective:
+            crops.append(self.global_transfo1(image))
+            crops.append(self.global_transfo2(image))
+            for _ in range(self.local_crops_number):
+                crops.append(self.local_transfo(image))
+
         return crops
 
 class GaussianBlur(object):
@@ -657,28 +670,41 @@ class MultiCropWrapper(nn.Module):
         # disable layers dedicated to ImageNet labels classification
         backbone.fc, backbone.head = nn.Identity(), nn.Identity()
         self.backbone = backbone
-        self.head = head
-
-    def forward(self, x):
+        if head is None:
+            self.head = nn.Identity()
+        else:
+            self.head = head
+   
+    
+    def forward(self, x, mask=None, return_backbone_feat=False, 
+                **kwargs):
         # convert to list
         if not isinstance(x, list):
             x = [x]
+            mask = [mask] if mask is not None else None
         idx_crops = torch.cumsum(torch.unique_consecutive(
             torch.tensor([inp.shape[-1] for inp in x]),
             return_counts=True,
         )[1], 0)
-        start_idx, output = 0, torch.empty(0).to(x[0].device)
+        start_idx = 0
         for end_idx in idx_crops:
-            _out = self.backbone(torch.cat(x[start_idx: end_idx]))
-            # The output is a tuple with XCiT model. See:
-            # https://github.com/facebookresearch/xcit/blob/master/xcit.py#L404-L405
-            if isinstance(_out, tuple):
-                _out = _out[0]
-            # accumulate outputs
-            output = torch.cat((output, _out))
+            inp_x = torch.cat(x[start_idx: end_idx])
+
+            if mask is not None:
+                inp_m = torch.cat(mask[start_idx: end_idx])
+                kwargs.update(dict(mask=inp_m))
+
+            _out = self.backbone(inp_x, **kwargs)
+            if start_idx == 0:
+                output = _out
+            else:
+                output = torch.cat((output, _out))
             start_idx = end_idx
         # Run the head forward on the concatenated features.
-        return self.head(output)
+        output_ = self.head(output)
+        if return_backbone_feat:
+            return output, output_
+        return output_
 
 
 def get_params_groups(model):
@@ -701,6 +727,19 @@ def has_batchnorms(model):
         if isinstance(module, bn_types):
             return True
     return False
+
+
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [torch.ones_like(tensor)
+        for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
 
 
 class PCA():
