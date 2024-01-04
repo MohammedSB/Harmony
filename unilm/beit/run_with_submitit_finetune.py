@@ -119,7 +119,7 @@ def main():
         slurm_additional_parameters={
             'mem': args.mem,
             'constraint': args.constraint,
-        } 
+        },
         **kwargs
     )
 
