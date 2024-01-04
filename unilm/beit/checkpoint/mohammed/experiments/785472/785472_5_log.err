@@ -1,0 +1,29 @@
+submitit ERROR (2024-01-04 19:58:55,166) - Submitted job triggered an exception
+Traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/mohammed/seg/lib/python3.8/site-packages/submitit/core/_submit.py", line 11, in <module>
+    submitit_main()
+  File "/home/mohammed/seg/lib/python3.8/site-packages/submitit/core/submission.py", line 76, in submitit_main
+    process_job(args.folder)
+  File "/home/mohammed/seg/lib/python3.8/site-packages/submitit/core/submission.py", line 69, in process_job
+    raise error
+  File "/home/mohammed/seg/lib/python3.8/site-packages/submitit/core/submission.py", line 55, in process_job
+    result = delayed.result()
+  File "/home/mohammed/seg/lib/python3.8/site-packages/submitit/core/utils.py", line 133, in result
+    self._result = self.function(*self.args, **self.kwargs)
+  File "run_with_submitit_finetune.py", line 64, in __call__
+    run_class_finetuning.main(self.args, self.parser)
+  File "/mnt/c/Users/Moham/Desktop/Harmony/unilm/beit/run_class_finetuning.py", line 508, in main
+    model, optimizer, _, _ = ds_init(
+  File "/home/mohammed/seg/lib/python3.8/site-packages/deepspeed/__init__.py", line 126, in initialize
+    engine = DeepSpeedEngine(args=args,
+  File "/home/mohammed/seg/lib/python3.8/site-packages/deepspeed/runtime/engine.py", line 136, in __init__
+    init_distributed(dist_backend=self.dist_backend)
+  File "/home/mohammed/seg/lib/python3.8/site-packages/deepspeed/utils/distributed.py", line 42, in init_distributed
+    mpi_discovery(distributed_port=distributed_port, verbose=verbose)
+  File "/home/mohammed/seg/lib/python3.8/site-packages/deepspeed/utils/distributed.py", line 58, in mpi_discovery
+    from mpi4py import MPI
+ModuleNotFoundError: No module named 'mpi4py'

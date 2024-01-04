@@ -1,0 +1,5 @@
+submitit INFO (2024-01-04 20:01:44,498) - Starting with JobEnvironment(job_id=788258, hostname=DESKTOP-VG2ACD7, local_rank=0(8), node=0(1), global_rank=0(8))
+submitit INFO (2024-01-04 20:01:44,499) - Loading pickle: /mnt/c/Users/Moham/Desktop/Harmony/unilm/beit/checkpoint/mohammed/experiments/788258/788258_submitted.pkl
+Process group: 8 tasks, rank: 0
+| distributed init (rank 0): file:///mnt/c/Users/Moham/Desktop/Harmony/unilm/beit/checkpoint/mohammed/experiments/164fccf449e04ad0937e953cac66f088_init, gpu 0
+submitit ERROR (2024-01-04 20:01:53,278) - Submitted job triggered an exception
