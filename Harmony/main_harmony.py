@@ -92,7 +92,7 @@ def get_args_parser():
     parser.add_argument('--lambda2', default=1.0, type=float, help="""loss weight for beit 
         loss over masked patch tokens (Default: 1.0)""")
     parser.add_argument('--objective', default='dino', type=str,
-        choices=['dino', 'ibot', 'dino_mae', 'mae_dino' 'harmony'],
+        choices=['dino', 'ibot', 'ibot_mae', 'mae_ibot', 'dino_mae', 'mae_dino' 'harmony'],
         help="The method to use for training the model")
 
     # Temperature teacher parameters
@@ -196,6 +196,7 @@ def train(args):
     dataset = data(data_root, transform=transform)
 
     if "ibot" in args.objective:
+        print("Using IBOT image transformation wrapper")
         dataset = IBOTLoaderWrapper(
             dataset=dataset,
             patch_size=args.patch_size,

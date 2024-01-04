@@ -94,6 +94,7 @@ class GenerativePath(nn.Module):
     def forward_encoder(self, x, mask_ratio):
         # embed patches
         x = self.image_encoder.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
 
         # add pos embed w/o cls token
         x = x + self.image_encoder.pos_embed[:, 1:, :]
