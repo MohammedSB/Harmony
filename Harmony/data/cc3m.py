@@ -21,6 +21,9 @@ class CC3M(torch.utils.data.Dataset):
         self.images, self.captions = save_image_captions_from_folders(self.folders, self.root)
         self.transform = transform
 
+        self.images = self.images[:10]
+        self.captions = self.captions[:10]
+
         assert len(self.captions) == len(self.images)
         print("Number of images loaded in CC3M are:", {self.__len__()})
 

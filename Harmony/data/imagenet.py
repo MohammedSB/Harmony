@@ -15,6 +15,7 @@ class ImageNet(torch.utils.data.Dataset):
         if split == "train":
             self.data = datasets.ImageFolder(root, transform=transform)
         elif split == "val":
+            self.images =  os.listdir(self.root)
             self.image_paths = [os.path.join(self.root, image) for image in self.images]
             self.labels = pd.read_csv(f"{os.sep}".join(os.path.realpath(__file__).split(f"{os.sep}")[:-1]) + "/meta/imagenet_val_labels.csv")
 
