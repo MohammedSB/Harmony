@@ -27,6 +27,8 @@ def parse_args():
     parser.add_argument("--use_volta32", action='store_true', help="Big models? Use this")
     parser.add_argument('--comment', default="", type=str,
                         help='Comment to pass to scheduler, e.g. priority message')
+    parser.add_argument("--constraint", default="v100", type=str)
+    parser.add_argument("--mem", default="200GB", type=str)
     args, _ = parser.parse_known_args()
     return args, parser
 
@@ -108,12 +110,16 @@ def main():
         mem_gb=40 * num_gpus_per_node,
         gpus_per_node=num_gpus_per_node,
         tasks_per_node=num_gpus_per_node,  # one task per GPU
-        cpus_per_task=10,
+        # cpus_per_task=10,
         nodes=nodes,
         timeout_min=timeout_min,  # max is 60 * 72
         # Below are cluster dependent parameters
         slurm_partition=partition,
         slurm_signal_delay_s=120,
+        slurm_additional_parameters={
+            'mem': args.mem,
+            'constraint': args.constraint,
+        } 
         **kwargs
     )
 
