@@ -20,7 +20,7 @@ import os
 import uuid
 from pathlib import Path
 
-import main_harmony
+import Harmony.main_harmony as main_harmony
 import submitit
 
 
@@ -64,7 +64,7 @@ class Trainer(object):
         self.args = args
 
     def __call__(self):
-        import main_harmony
+        import Harmony.main_harmony as main_harmony
 
         self._setup_gpu_args()
         main_harmony.train(self.args)
@@ -121,7 +121,7 @@ def main():
         slurm_additional_parameters={
             'mem': args.mem,
             'constraint': args.constraint,
-        } 
+        },
         **kwargs
     )
 
