@@ -31,10 +31,10 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 
-import utils
-from utils import DataAugmentation, get_dataset_from_string
-import vision_transformer as vits
-from models import Harmony
+import Harmony.utils as utils
+from Harmony.utils import DataAugmentation, get_dataset_from_string
+import Harmony.vision_transformer as vits
+from Harmony.models import Harmony
 from Harmony.data import IBOTLoaderWrapper
 
 
