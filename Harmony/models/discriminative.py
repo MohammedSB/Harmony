@@ -103,16 +103,15 @@ class DiscriminativePath(nn.Module):
             ).cuda()
 
     def forward(self, images, epoch, masks):
+        
+        teacher_output = self.teacher(images[:self.meta['global_crops_number']])
 
         if 'dino' in self.meta['objective']:
-            teacher_output = self.teacher(images[:2])  # only the 2 global views pass through the teacher
             student_output = self.student(images)
 
             loss = self.loss(student_output, teacher_output, epoch)
         elif 'ibot' in self.meta['objective']:
 
-            # get global views
-            teacher_output = self.teacher(images[:self.meta['global_crops_number']])
             student_output = self.student(images[:self.meta['global_crops_number']], mask=masks[:self.meta['global_crops_number']])
 
             # get local views

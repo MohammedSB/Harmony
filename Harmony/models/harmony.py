@@ -57,7 +57,7 @@ class Harmony(torch.nn.Module):
             outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
 
         if self.is_generative:
-            output = self.generative_path(images[0]) # image[0] is a simply augmented image
+            output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops']) 
             
             outputs["pred"] = output["output"]
             outputs["mask"] = output["mask"]

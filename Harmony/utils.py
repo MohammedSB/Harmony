@@ -109,21 +109,14 @@ class DataAugmentation(object):
         ])
 
     def __call__(self, image):
-        
         crops = []
         crops.append(self.simple_aug(image))
 
-        if "ibot" in self.objective:
-            crops.append(self.global_transfo1(image))
-            for _ in range(self.global_crops_number - 1):
-                crops.append(self.global_transfo2(image))
-            for _ in range(self.local_crops_number):
-                crops.append(self.local_transfo(image))
-        elif "dino" in self.objective:
-            crops.append(self.global_transfo1(image))
+        crops.append(self.global_transfo1(image))
+        for _ in range(self.global_crops_number - 1):
             crops.append(self.global_transfo2(image))
-            for _ in range(self.local_crops_number):
-                crops.append(self.local_transfo(image))
+        for _ in range(self.local_crops_number):
+            crops.append(self.local_transfo(image))
 
         return crops
 

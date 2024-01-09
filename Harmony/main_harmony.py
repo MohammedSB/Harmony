@@ -139,6 +139,8 @@ def get_args_parser():
     parser.add_argument('--optimizer', default='adamw', type=str,
         choices=['adamw', 'sgd', 'lars'], help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
+    parser.add_argument('--reconstruct_global_crops', type=bool, default=True, help="""Whether to reconstruct global crops or
+                        entire image""")
 
     # Multi-crop parameters
     parser.add_argument('--global_crops_number', type=int, default=2, help="""Number of global
