@@ -96,7 +96,7 @@ class DataAugmentation(object):
             transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC),
             flip_and_color_jitter,
             GaussianBlur(0.1),
-            Solarization(0.2),
+            transforms.RandomSolarize(threshold=128, p=0.2),
             normalize,
         ])
         # transformation for the local small crops

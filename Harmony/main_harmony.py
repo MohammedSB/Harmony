@@ -87,6 +87,8 @@ def get_args_parser():
         image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
     # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
     #     help="Whether to use batch normalizations in projection head (Default: False)")
+    parser.add_argument('--separate_gen_model', default=False, type=bool, help="""whether to separate the
+        generative path""")
     parser.add_argument('--lambda1', default=1.0, type=float, help="""loss weight for dino
         loss over [CLS] tokens (Default: 1.0)""")
     parser.add_argument('--lambda2', default=1.0, type=float, help="""loss weight for beit 
@@ -320,6 +322,16 @@ def train_one_epoch(model, data_loader,
     for name_k, param_k in model.discriminative_path.teacher_without_ddp.named_parameters():
         names_k.append(name_k)
         params_k.append(param_k)
+        
+    if args.separate_gen_model:
+        names_g_tmp, params_g_tmp = [], []
+        for name_g, param_g in model.generative_path.named_parameters():
+            names_g_tmp.append(name_g)
+            params_g_tmp.append(param_g)
+        names_common_gen = list(set(names_q) & set(names_g_tmp))
+        params_g = [param_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
+        names_g = [name_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
+
     names_common = list(set(names_q) & set(names_k))
     params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
     params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
@@ -374,12 +386,17 @@ def train_one_epoch(model, data_loader,
             fp16_scaler.step(optimizer)
             fp16_scaler.update()
 
-        if model.is_discriminative:
-            # EMA update for the teacher
-            with torch.no_grad():
-                m = momentum_schedule[it]  # momentum parameter
-                for param_q, param_k in zip(params_q, params_k):
+        # EMA update for the teacher
+        with torch.no_grad():
+            m = momentum_schedule[it]  # momentum parameter
+            param_index = 0
+            for param_q, param_k in zip(params_q, params_k):
+                if args.separate_gen_model and names_q[param_index] in names_common_gen:
+                    gen_param_index = names_g.index(names_q[param_index])
+                    param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + params_g[gen_param_index].detach().data) / 2 ) )
+                else:
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+                param_index+=1
 
         # logging
         torch.cuda.synchronize()

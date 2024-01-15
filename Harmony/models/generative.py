@@ -6,16 +6,16 @@ from Harmony.utils import get_2d_sincos_pos_embed
 from Harmony.losses import mae_loss
 
 class GenerativePath(nn.Module):
-    def __init__(self, image_encoder, meta, in_chans=3,
+    def __init__(self, backbone, meta, in_chans=3,
                 decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                 mlp_ratio=4, norm_layer=nn.LayerNorm, norm_pix_loss=False):
         super().__init__()
-        self.image_encoder = image_encoder
+        self.backbone = backbone
         self.meta = meta
 
         self.norm_pix_loss = norm_pix_loss
-        self.patch_embed = image_encoder.patch_embed
-        num_patches = self.image_encoder.patch_embed.num_patches
+        self.patch_embed = backbone.patch_embed
+        num_patches = self.backbone.patch_embed.num_patches
 
         # make mae decoder
         self.decoder_embed = nn.Linear(self.meta['embed_dim'], decoder_embed_dim, bias=True)
@@ -93,24 +93,24 @@ class GenerativePath(nn.Module):
 
     def forward_encoder(self, x, mask_ratio):
         # embed patches
-        x = self.image_encoder.patch_embed(x)
+        x = self.backbone.patch_embed(x)
         x = x.flatten(2).transpose(1, 2)
 
         # add pos embed w/o cls token
-        x = x + self.image_encoder.pos_embed[:, 1:, :]
+        x = x + self.backbone.pos_embed[:, 1:, :]
 
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
         # append cls token
-        cls_token = self.image_encoder.cls_token + self.image_encoder.pos_embed[:, :1, :]
+        cls_token = self.backbone.cls_token + self.backbone.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
 
         # apply Transformer blocks
-        for blk in self.image_encoder.blocks:
+        for blk in self.backbone.blocks:
             x = blk(x)
-        x = self.image_encoder.norm(x)
+        x = self.backbone.norm(x)
 
         return x, mask, ids_restore
 
@@ -140,7 +140,7 @@ class GenerativePath(nn.Module):
 
         return x
 
-    def forward(self, imgs, reconstruct_global_crops, mask_ratio=0.75):
+    def forward(self, imgs, reconstruct_global_crops=False, mask_ratio=0.75):
         if reconstruct_global_crops:
             preds, masks = [], []
             losses = torch.tensor([0.0]).to(self.meta['gpu'])

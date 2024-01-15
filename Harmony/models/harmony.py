@@ -18,13 +18,20 @@ class Harmony(torch.nn.Module):
 
         # define the image encoder
         try: 
-            self.meta['arch'] in vits.__dict__.keys()
             self.image_encoder = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
                 drop_path_rate=self.meta['drop_path_rate'] if hasattr(self.meta, 'drop_path_rate') else 0,  # stochastic depth
                 return_all_tokens=True if "ibot" in self.objective else False,
                 masked_im_modeling=self.meta['use_masked_im_modeling']
             )
+            if self.meta['separate_gen_model']:
+                print("Building separate network for generative path.")
+                self.gen_encoder = vits.__dict__[self.meta['arch']](
+                    patch_size=self.meta['patch_size'],
+                    drop_path_rate=self.meta['drop_path_rate'] if hasattr(self.meta, 'drop_path_rate') else 0,  # stochastic depth
+                )
+            else:
+                self.gen_encoder = self.image_encoder
         except:
             raise Exception(f"Unknow arch: {self.meta['arch']}")
 
@@ -39,7 +46,7 @@ class Harmony(torch.nn.Module):
             self.is_discriminative = True
 
         if "mae" in self.objective:
-            self.generative_path = GenerativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
+            self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta).cuda()
             self.is_generative = True
 
     def forward(self, images, epoch, masks):

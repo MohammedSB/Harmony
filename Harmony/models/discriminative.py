@@ -7,7 +7,7 @@ from Harmony.models.vision_transformer import Block
 import Harmony.models.vision_transformer as vits
 from Harmony.models.heads import DINOHead, iBOTHead
 from Harmony import utils
-from Harmony.losses import DINOLoss, iBOTLoss
+from Harmony.losses import DINOLoss, iBOTLoss, KoLeoLoss
 
 class DiscriminativePath(nn.Module):
     def __init__(self, image_encoder, meta):
@@ -112,7 +112,10 @@ class DiscriminativePath(nn.Module):
             loss = self.loss(student_output, teacher_output, epoch)
         elif 'ibot' in self.meta['objective']:
 
-            student_output = self.student(images[:self.meta['global_crops_number']], mask=masks[:self.meta['global_crops_number']])
+            backbone_feat, student_output = self.student(images[:self.meta['global_crops_number']], mask=masks[:self.meta['global_crops_number']], return_backbone_feat=True)
+
+            # print(len(backbone_feat[:, 0]))
+            # print(backbone_feat[0].shape)
 
             # get local views
             self.student.module.backbone.masked_im_modeling = False
@@ -122,6 +125,16 @@ class DiscriminativePath(nn.Module):
             all_loss = self.loss(student_output, teacher_output, student_local_cls, masks, epoch)
 
             loss = all_loss.pop('loss')
+
+        # if self.use_koleo:
+        #     self.koleo_loss = KoLeoLoss()
+        #     koleo_loss = self.cfg.dino.koleo_loss_weight * sum(
+        #         self.koleo_loss(p) for p in student_cls_tokens.chunk(2)
+        #     )  # we don't apply koleo loss between cls tokens of a same image
+        #     loss_accumulator += koleo_loss
+        #     loss_dict["koleo_loss"] = (
+        #         koleo_loss / loss_scales
+        #         )  # this is to display the same losses as before but we can remove eventually
 
         return {
             "teacher_output": teacher_output,
