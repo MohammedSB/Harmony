@@ -22,6 +22,7 @@ import time
 import json
 from collections import defaultdict, deque
 import datetime
+import platform
 import numpy as np
 from timm.utils import get_state_dict
 
@@ -34,6 +35,12 @@ from modeling_discrete_vae import Dalle_VAE, DiscreteVAE
 
 from tensorboardX import SummaryWriter
 
+
+def get_backend():
+    if platform.system() == 'Windows' or "microsoft" in platform.uname().release:
+        return 'gloo'
+    else:
+        return 'nccl'
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -287,7 +294,7 @@ def init_distributed_mode(args):
     args.distributed = True
 
     torch.cuda.set_device(args.gpu)
-    args.dist_backend = 'gloo'
+    args.dist_backend = get_backend()
     print('| distributed init (rank {}): {}, gpu {}'.format(
         args.rank, args.dist_url, args.gpu), flush=True)
     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,

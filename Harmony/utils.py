@@ -24,6 +24,7 @@ import math
 import random
 import datetime
 import subprocess
+import platform
 from collections import defaultdict, deque
 
 import numpy as np
@@ -58,6 +59,12 @@ dataset_classes = {
         "CARS": datasets.StanfordCars,
         # "VOC2007": datasets.VOC2007
     }
+
+def get_backend():
+    if platform.system() == 'Windows' or "microsoft" in platform.uname().release:
+        return 'gloo'
+    else:
+        return 'nccl'
 
 class DataAugmentation(object):
     def __init__(self, global_crops_scale, local_crops_scale, global_crops_number, local_crops_number, objective):
@@ -545,7 +552,7 @@ def init_distributed_mode(args):
         sys.exit(1)
 
     dist.init_process_group(
-        backend="gloo",
+        backend=get_backend(),
         init_method=args.dist_url,
         world_size=args.world_size,
         rank=args.rank,
