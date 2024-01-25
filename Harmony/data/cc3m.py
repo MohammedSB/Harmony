@@ -1,6 +1,7 @@
 import os
 
 from PIL import Image
+from Harmony.data.utils import SimpleTokenizer
 import torch
 
 def save_image_captions_from_folders(folders, root):
@@ -15,11 +16,12 @@ def save_image_captions_from_folders(folders, root):
     return images_paths, captions_path
 
 class CC3M(torch.utils.data.Dataset):
-    def __init__(self, root, transform=None, **kwargs):
+    def __init__(self, root, transform=None, tokneizer=SimpleTokenizer(), **kwargs):
         self.root = root
         self.folders =  [f for f in os.scandir(root) if f.is_dir()]
         self.images, self.captions = save_image_captions_from_folders(self.folders, self.root)
         self.transform = transform
+        self.tokenizer = tokneizer
 
         # self.images = self.images[:10]
         # self.captions = self.captions[:10]
@@ -43,5 +45,7 @@ class CC3M(torch.utils.data.Dataset):
         image, caption = self.get_image_caption_pair(idx)
         if self.transform:
             image = self.transform(image)
-
+        if self.tokenizer:
+            caption = self.tokenizer(caption)
+    
         return image, caption

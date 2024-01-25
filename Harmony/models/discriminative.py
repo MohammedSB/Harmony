@@ -114,9 +114,6 @@ class DiscriminativePath(nn.Module):
 
             backbone_feat, student_output = self.student(images[:self.meta['global_crops_number']], mask=masks[:self.meta['global_crops_number']], return_backbone_feat=True)
 
-            # print(len(backbone_feat[:, 0]))
-            # print(backbone_feat[0].shape)
-
             # get local views
             self.student.module.backbone.masked_im_modeling = False
             student_local_cls = self.student(images[self.meta['global_crops_number']:])[0] if len(images) > self.meta['global_crops_number'] else None
@@ -139,5 +136,5 @@ class DiscriminativePath(nn.Module):
         return {
             "teacher_output": teacher_output,
             "student_output": student_output,
-            "loss": loss
+            "loss": loss,
         }

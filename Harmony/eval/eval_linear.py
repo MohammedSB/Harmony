@@ -29,8 +29,9 @@ from torchvision import models as torchvision_models
 
 from Harmony import utils
 from Harmony.utils import get_dataset_from_string
-import Harmony.vision_transformer as vits
+import Harmony.models.vision_transformer as vits
 from Harmony.models import Harmony 
+from Harmony.eval.metrics import MetricType, build_metric
 
 def eval_linear(args):
     utils.init_distributed_mode(args)
@@ -63,9 +64,18 @@ def eval_linear(args):
     utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
     print(f"Model {args.arch} built.")
 
-    linear_classifier = LinearClassifier(embed_dim, num_labels=args.num_labels)
-    linear_classifier = linear_classifier.cuda()
-    linear_classifier = nn.parallel.DistributedDataParallel(linear_classifier, device_ids=[args.gpu])
+    linear_classifiers, optim_param_groups = setup_linear_classifiers(
+        args=args,
+        n_last_blocks_list=[args.n_last_blocks],
+        learning_rates=args.lrs,
+        batch_size=args.batch_size_per_gpu,
+        out_dim=embed_dim,
+        num_classes=args.num_labels,
+    )
+
+    # linear_classifier = LinearClassifier(embed_dim, num_labels=args.num_labels)
+    # linear_classifier = linear_classifier.cuda()
+    # linear_classifier = nn.parallel.DistributedDataParallel(linear_classifier, device_ids=[args.gpu])
 
     data = get_dataset_from_string(args.data)
     data_path = args.data.split(':')[1] 
@@ -90,9 +100,13 @@ def eval_linear(args):
     )
 
     if args.evaluate:
-        utils.load_pretrained_linear_weights(linear_classifier, args.arch, args.patch_size)
-        test_stats = validate_network(val_loader, model, linear_classifier, args.n_last_blocks, args.avgpool_patchtokens)
-        print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+
+        utils.load_pretrained_linear_weights(linear_classifiers, args.arch, args.patch_size)
+        _, results_dict_temp = validate_network(args, val_loader, model, linear_classifiers, args.n_last_blocks, args.avgpool_patchtokens, num_classes=args.num_labels)
+
+        results_dict = get_top_performer(results_dict_temp)
+
+        print(f"Accuracy of the network on the {len(dataset_val)} test images: {results_dict['best_classifier']['accuracy']:.1f}%")
         return
 
     train_transform = pth_transforms.Compose([
@@ -117,12 +131,7 @@ def eval_linear(args):
     print(f"Data loaded with {len(dataset_train)} train and {len(dataset_val)} val imgs.")
 
     # set optimizer
-    optimizer = torch.optim.SGD(
-        linear_classifier.parameters(),
-        args.lr * (args.batch_size_per_gpu * utils.get_world_size()) / 256., # linear scaling rule
-        momentum=0.9,
-        weight_decay=0, # we do not apply weight decay
-    )
+    optimizer = torch.optim.SGD(optim_param_groups, momentum=0.9, weight_decay=0)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs, eta_min=0)
 
     # Optionally resume from a checkpoint
@@ -130,7 +139,7 @@ def eval_linear(args):
     utils.restart_from_checkpoint(
         os.path.join(args.output_dir, "checkpoint.pth.tar"),
         run_variables=to_restore,
-        state_dict=linear_classifier,
+        state_dict=linear_classifiers,
         optimizer=optimizer,
         scheduler=scheduler,
     )
@@ -140,24 +149,28 @@ def eval_linear(args):
     for epoch in range(start_epoch, args.epochs):
         train_loader.sampler.set_epoch(epoch)
 
-        train_stats = train(model, linear_classifier, optimizer, train_loader, epoch, args.n_last_blocks, args.avgpool_patchtokens)
+        train_stats = train(model, linear_classifiers, optimizer, train_loader, epoch, args.n_last_blocks, args.avgpool_patchtokens)
         scheduler.step()
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch}
         if epoch % args.val_freq == 0 or epoch == args.epochs - 1:
-            test_stats = validate_network(val_loader, model, linear_classifier, args.n_last_blocks, args.avgpool_patchtokens)
-            print(f"Accuracy at epoch {epoch} of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
-            best_acc = max(best_acc, test_stats["acc1"])
+            _, results_dict_temp = validate_network(args, val_loader, model, linear_classifiers, args.n_last_blocks, args.avgpool_patchtokens, num_classes=args.num_labels)
+            best_classifier  = get_top_performer(results_dict_temp)
+            best_cur_acc =  best_classifier['accuracy']['top-1']
+            print(f"Accuracy at epoch {epoch} of the network on the {len(dataset_val)} test images: {best_cur_acc:.1f}%")
+            best_acc = max(best_acc, best_cur_acc)
             print(f'Max accuracy so far: {best_acc:.2f}%')
+
             log_stats = {**{k: v for k, v in log_stats.items()},
-                         **{f'test_{k}': v for k, v in test_stats.items()}}
+                         **{f'test_{k}': v for k, v in best_classifier['accuracy'].items()}}
+
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
             save_dict = {
                 "epoch": epoch + 1,
-                "state_dict": linear_classifier.state_dict(),
+                "state_dict": linear_classifiers.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(),
                 "best_acc": best_acc,
@@ -173,6 +186,7 @@ def train(model, linear_classifier, optimizer, loader, epoch, n, avgpool):
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
     for (inp, target) in metric_logger.log_every(loader, 20, header):
+
         # move to gpu
         inp = inp.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
@@ -187,10 +201,12 @@ def train(model, linear_classifier, optimizer, loader, epoch, n, avgpool):
                     output = output.reshape(output.shape[0], -1)
             else:
                 output = model(inp)
-        output = linear_classifier(output)
+        outputs = linear_classifier(output)
 
         # compute cross entropy loss
-        loss = nn.CrossEntropyLoss()(output, target)
+        losses = {f"loss_{k}": nn.CrossEntropyLoss()(v, target) for k, v in outputs.items()}
+        loss = sum(losses.values())
+        # loss = nn.CrossEntropyLoss()(output, target)
 
         # compute the gradients
         optimizer.zero_grad()
@@ -210,10 +226,20 @@ def train(model, linear_classifier, optimizer, loader, epoch, n, avgpool):
 
 
 @torch.no_grad()
-def validate_network(val_loader, model, linear_classifier, n, avgpool):
+def validate_network(args, val_loader, model, linear_classifier, n, avgpool, num_classes):
     linear_classifier.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
+
+    linear_classifier = remove_ddp_wrapper(linear_classifier)
+    postprocessors = {k: LinearPostprocessor(v, None) for k, v in linear_classifier.classifiers_dict.items()}
+
+    metric = build_metric(MetricType.MEAN_ACCURACY, num_classes=num_classes)
+    metrics = {k: metric.clone() for k in linear_classifier.classifiers_dict}
+
+    for metric in metrics.values():
+        metric = metric.to(args.gpu)
+
     for inp, target in metric_logger.log_every(val_loader, 20, header):
         # move to gpu
         inp = inp.cuda(non_blocking=True)
@@ -229,26 +255,42 @@ def validate_network(val_loader, model, linear_classifier, n, avgpool):
                     output = output.reshape(output.shape[0], -1)
             else:
                 output = model(inp)
-        output = linear_classifier(output)
-        loss = nn.CrossEntropyLoss()(output, target)
 
-        if linear_classifier.module.num_labels >= 5:
-            acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
-        else:
-            acc1, = utils.accuracy(output, target, topk=(1,))
+        # outputs = linear_classifier(output)
+        
+        # losses = {f"loss_{k}": nn.CrossEntropyLoss()(v, target) for k, v in output.items()}
+        # loss = sum(losses.values())
 
-        batch_size = inp.shape[0]
-        metric_logger.update(loss=loss.item())
-        metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        if linear_classifier.module.num_labels >= 5:
-            metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
-    if linear_classifier.module.num_labels >= 5:
-        print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
-    else:
-        print('* Acc@1 {top1.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, losses=metric_logger.loss))
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+        for k, metric in metrics.items():
+            metric_inputs = postprocessors[k](output, target)
+            metric.update(**metric_inputs)
+
+        # if linear_classifier.module.num_labels >= 5:
+        #     acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
+        # else:
+        #     acc1, = utils.accuracy(output, target, topk=(1,))
+
+        # batch_size = inp.shape[0]
+        # metric_logger.update(loss=loss.item())
+        # metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
+        # if linear_classifier.module.num_labels >= 5:
+        #     metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+            
+    metric_logger.synchronize_between_processes()
+    print(f"Averaged stats: {metric_logger}")
+            
+    stats = {k: metric.compute() for k, metric in metrics.items()}
+    metric_logger_stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+    # if linear_classifier.module.num_labels >= 5:
+    #     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
+    #       .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    # else:
+    #     print('* Acc@1 {top1.global_avg:.3f} loss {losses.global_avg:.3f}'
+    #       .format(top1=metric_logger.acc1, losses=metric_logger.loss))
+    # return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+    return metric_logger_stats, stats
 
 
 class LinearClassifier(nn.Module):
@@ -266,7 +308,80 @@ class LinearClassifier(nn.Module):
 
         # linear layer
         return self.linear(x)
+    
+class AllClassifiers(nn.Module):
+    def __init__(self, classifiers_dict):
+        super().__init__()
+        self.classifiers_dict = nn.ModuleDict()
+        self.classifiers_dict.update(classifiers_dict)
 
+    def forward(self, inputs):
+        return {k: v.forward(inputs) for k, v in self.classifiers_dict.items()}
+
+    def __len__(self):
+        return len(self.classifiers_dict)
+    
+def scale_lr(learning_rates, batch_size):
+    return learning_rates * (batch_size * dist.get_world_size()) / 256.0
+
+
+def setup_linear_classifiers(args, n_last_blocks_list, learning_rates, batch_size, out_dim=1024, num_classes=1000):
+    linear_classifiers_dict = nn.ModuleDict()
+    optim_param_groups = []
+    for _lr in learning_rates:
+        lr = scale_lr(_lr, batch_size)
+        linear_classifier = LinearClassifier(
+            dim=out_dim, num_labels=num_classes
+        )
+        linear_classifier = linear_classifier.cuda()
+        linear_classifiers_dict[
+            f"classifier_lr_{lr:.5f}".replace(".", "_")
+        ] = linear_classifier
+        optim_param_groups.append({"params": linear_classifier.parameters(), "lr": lr})
+
+    linear_classifiers = AllClassifiers(linear_classifiers_dict)
+    if dist.is_available():
+        linear_classifiers = nn.parallel.DistributedDataParallel(linear_classifiers, device_ids=[args.gpu])
+
+    return linear_classifiers, optim_param_groups
+
+
+class LinearPostprocessor(nn.Module):
+    def __init__(self, linear_classifier, class_mapping=None):
+        super().__init__()
+        self.linear_classifier = linear_classifier
+        self.register_buffer("class_mapping", None if class_mapping is None else torch.LongTensor(class_mapping))
+
+    def forward(self, samples, targets):
+        preds = self.linear_classifier(samples)
+        return {
+            "preds": preds[:, self.class_mapping] if self.class_mapping is not None else preds,
+            "target": targets,
+        }
+    
+def has_ddp_wrapper(m: nn.Module) -> bool:
+    return isinstance(m, nn.parallel.DistributedDataParallel)
+
+
+def remove_ddp_wrapper(m: nn.Module) -> nn.Module:
+    return m.module if has_ddp_wrapper(m) else m
+
+def get_top_performer(results_dict_temp):
+    best_classifier_on_val = None
+    print("")
+    max_accuracy = 0
+    best_classifier = ""
+    for i, (classifier_string, metric) in enumerate(results_dict_temp.items()):
+        print(f"-- Classifier: {classifier_string} * {metric}")
+        if (
+            best_classifier_on_val is None and metric["top-1"].item() >= max_accuracy
+        ) or classifier_string == best_classifier_on_val:
+            max_accuracy = metric["top-1"].item()
+            best_classifier = classifier_string
+
+    results_dict_temp[best_classifier] = {k: v.tolist() for k, v in results_dict_temp[best_classifier].items()}
+    best_classifier = {"name": best_classifier, "accuracy": results_dict_temp[best_classifier]}
+    return best_classifier
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Evaluation with linear classification')
@@ -280,7 +395,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_weights', default='', type=str, help="Path to pretrained weights to evaluate.")
     parser.add_argument("--checkpoint_key", default="main_vit", type=str, help='Key to use in the checkpoint (example: "teacher")')
     parser.add_argument('--epochs', default=100, type=int, help='Number of epochs of training.')
-    parser.add_argument("--lr", default=0.001, type=float, help="""Learning rate at the beginning of
+    parser.add_argument("--lrs", default=[1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1], type=float, help="""Learning rate at the beginning of
         training (highest LR used during training). The learning rate is linearly scaled
         with the batch size, and specified here for a reference batch size of 256.
         We recommend tweaking the LR depending on the checkpoint evaluated.""")

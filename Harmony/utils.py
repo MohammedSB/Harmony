@@ -117,7 +117,6 @@ class DataAugmentation(object):
             crops.append(self.global_transfo2(image))
         for _ in range(self.local_crops_number):
             crops.append(self.local_transfo(image))
-
         return crops
 
 class GaussianBlur(object):
@@ -274,6 +273,8 @@ def fix_random_seeds(seed=31):
     """
     Fix random seeds.
     """
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
@@ -658,7 +659,7 @@ class MultiCropWrapper(nn.Module):
     concatenate all the output features and run the head forward on these
     concatenated features.
     """
-    def __init__(self, backbone, head):
+    def __init__(self, backbone, head=None):
         super(MultiCropWrapper, self).__init__()
         # disable layers dedicated to ImageNet labels classification
         backbone.fc, backbone.head = nn.Identity(), nn.Identity()

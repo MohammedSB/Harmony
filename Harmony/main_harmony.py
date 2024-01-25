@@ -33,7 +33,6 @@ from torchvision import models as torchvision_models
 
 import Harmony.utils as utils
 from Harmony.utils import DataAugmentation, get_dataset_from_string
-import Harmony.vision_transformer as vits
 from Harmony.models import Harmony
 from Harmony.data import IBOTLoaderWrapper
 
@@ -281,15 +280,14 @@ def train(args):
         # ============ writing logs ... ============
         save_dict = {
             'model': model.state_dict(),
-            'main_vit': model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict(), # main resulting vit
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'disc_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
+            'disc_loss': model.discriminative_path.loss.state_dict(),
         }
 
-        # saving main vit separately
-        main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict()
+        # saving teacher vit separately
+        main_vit = model.discriminative_path.teacher.backbone.state_dict()
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
@@ -341,7 +339,7 @@ def train_one_epoch(model, data_loader,
 
         if len(data) == 3:
             images, captions, masks = data
-            masks = [m.cuda(non_blocking=True) for m in masks]            
+            masks = [m.cuda(non_blocking=True) for m in masks]
         elif len(data) == 2:
             images, captions = data
             masks = None
@@ -358,7 +356,7 @@ def train_one_epoch(model, data_loader,
 
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            model_output = model(images, epoch, masks=masks)
+            model_output = model(images, epoch, masks=masks, captions=captions)
             disc_loss, gen_loss = model_output["disc_loss"], model_output["gen_loss"]
             loss = model_output["loss"]
 

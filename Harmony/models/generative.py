@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from Harmony.vision_transformer import Block
+from Harmony.models.vision_transformer import Block
 from Harmony.utils import get_2d_sincos_pos_embed
 from Harmony.losses import mae_loss
 
