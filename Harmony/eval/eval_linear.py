@@ -290,6 +290,7 @@ def validate_network(args, val_loader, model, linear_classifier, n, avgpool, num
     #       .format(top1=metric_logger.acc1, losses=metric_logger.loss))
     # return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
+    metric.reset()
     return metric_logger_stats, stats
 
 
@@ -379,7 +380,7 @@ def get_top_performer(results_dict_temp):
             max_accuracy = metric["top-1"].item()
             best_classifier = classifier_string
 
-    results_dict_temp[best_classifier] = {k: v.tolist() for k, v in results_dict_temp[best_classifier].items()}
+    results_dict_temp[best_classifier] = {k: v.item() for k, v in results_dict_temp[best_classifier].items()}
     best_classifier = {"name": best_classifier, "accuracy": results_dict_temp[best_classifier]}
     return best_classifier
 

@@ -146,7 +146,7 @@ class GenerativePath(nn.Module):
             losses = torch.tensor([0.0]).to(self.meta['gpu'])
             
             for i in range(self.meta['global_crops_number']):
-                latent, mask, ids_restore = self.forward_encoder(imgs[i], mask_ratio)
+                latent, mask, ids_restore = self.forward_encoder(imgs[i + 1], mask_ratio) # +1 to skip simply augmented img
                 pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
 
                 loss = mae_loss(self.patchify(imgs[i]), pred, mask, self.norm_pix_loss)
@@ -155,10 +155,10 @@ class GenerativePath(nn.Module):
                 masks.append(mask)
                 losses += loss
         else:
-            latent, masks, ids_restore = self.forward_encoder(imgs[i], mask_ratio)
+            latent, masks, ids_restore = self.forward_encoder(imgs[0], mask_ratio)
             preds = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
 
-            losses = mae_loss(self.patchify(imgs[i]), pred, mask, self.norm_pix_loss)
+            losses = mae_loss(self.patchify(imgs[0]), pred, mask, self.norm_pix_loss)
         return {
             "output": preds,
             "mask": masks,

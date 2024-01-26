@@ -14,14 +14,14 @@ class ImageNet(torch.utils.data.Dataset):
 
         if split == "train":
             self.data = datasets.ImageFolder(root, transform=transform)
-            # self.data = torch.utils.data.Subset(self.data, range(10))
+            self.data = torch.utils.data.Subset(self.data, range(10))
         elif split == "val":
             self.images =  os.listdir(self.root)
             self.image_paths = [os.path.join(self.root, image) for image in self.images]
             self.labels = pd.read_csv(f"{os.sep}".join(os.path.realpath(__file__).split(f"{os.sep}")[:-1]) + "/meta/imagenet_val_labels.csv")
 
-            # self.image_paths = self.image_paths[:100]
-            # self.images = self.images[:100]
+            self.image_paths = self.image_paths[:100]
+            self.images = self.images[:100]
 
     def __len__(self):
         if self.split == "train":

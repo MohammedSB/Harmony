@@ -6,3 +6,4 @@ torchvision==0.15.0
 submitit
 --extra-index-url https://pypi.nvidia.com
 cuml-cu11
+ftfy
