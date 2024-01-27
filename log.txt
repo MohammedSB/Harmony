@@ -1,2 +1,3 @@
 {"train_lr": 3.90625e-08, "train_loss": 47.33207817077637, "epoch": 0, "test_top-1": 0.0, "test_top-5": 0.009999999776482582}
 {"train_lr": 3.90625e-08, "train_loss": 47.15795555114746, "epoch": 0, "test_top-1": 0.0, "test_top-5": 0.009999999776482582}
+{"train_lr": 3.90625e-08, "train_loss": 47.527993774414064, "epoch": 0, "test_top-1": 0.0, "test_top-5": 0.0}

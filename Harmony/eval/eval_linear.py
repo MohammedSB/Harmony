@@ -234,11 +234,11 @@ def validate_network(args, val_loader, model, linear_classifier, n, avgpool, num
     linear_classifier = remove_ddp_wrapper(linear_classifier)
     postprocessors = {k: LinearPostprocessor(v, None) for k, v in linear_classifier.classifiers_dict.items()}
 
-    # metric = build_metric(MetricType.MEAN_ACCURACY, num_classes=num_classes)
-    # metrics = {k: metric.clone() for k in linear_classifier.classifiers_dict}
+    metric = build_metric(MetricType.MEAN_ACCURACY, num_classes=num_classes)
+    metrics = {k: metric.clone() for k in linear_classifier.classifiers_dict}
 
-    # for metric in metrics.values():
-    #     metric = metric.cuda()
+    for metric in metrics.values():
+        metric = metric.cuda()
 
     for inp, target in metric_logger.log_every(val_loader, 20, header):
         # move to gpu
@@ -261,9 +261,9 @@ def validate_network(args, val_loader, model, linear_classifier, n, avgpool, num
         # losses = {f"loss_{k}": nn.CrossEntropyLoss()(v, target) for k, v in output.items()}
         # loss = sum(losses.values())
 
-        # for k, metric in metrics.items():
-        #     metric_inputs = postprocessors[k](output, target)
-        #     metric.update(**metric_inputs)
+        for k, metric in metrics.items():
+            metric_inputs = postprocessors[k](output, target)
+            metric.update(**metric_inputs)
 
         # if linear_classifier.module.num_labels >= 5:
         #     acc1, acc5 = utils.accuracy(output, target, topk=(1, 5))
@@ -279,15 +279,11 @@ def validate_network(args, val_loader, model, linear_classifier, n, avgpool, num
     metric_logger.synchronize_between_processes()
     print(f"Averaged stats: {metric_logger}")
             
-    # stats = {k: metric.compute() for k, metric in metrics.items()}
-
+    stats = {k: metric.compute() for k, metric in metrics.items()}
     metric_logger_stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-    
-    from torch import tensor
-    stats = {'classifier_lr_0_00000': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0., device='cuda:0')}, 'classifier_lr_0_00001': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0., device='cuda:0')}, 'classifier_lr_0_00002': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0., device='cuda:0')}, 'classifier_lr_0_00004': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0.0100, device='cuda:0')}, 'classifier_lr_0_00008': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0.0200, device='cuda:0')}, 'classifier_lr_0_00020': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0., device='cuda:0')}, 'classifier_lr_0_00039': {'top-1': tensor(0., device='cuda:0'), 'top-5': tensor(0.0100, device='cuda:0')}}
-    {'top-1': tensor(1.), 'top-5': tensor(1.)}
 
-    print(stats)
+    for m in metrics.values():
+        m.reset()
 
     # if linear_classifier.module.num_labels >= 5:
     #     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
