@@ -1,19 +1,52 @@
+# Copyright (c) ByteDance, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+"""
+Mostly copy-paste from mmsegmentation library:
+https://github.com/open-mmlab/mmsegmentation/blob/master/mmseg/apis/train.py
+"""
+
 import random
 import warnings
-
 import numpy as np
 import torch
-from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import build_optimizer, build_runner
-
-from mmseg.core import DistEvalHook, EvalHook
-from mmseg.datasets import build_dataloader, build_dataset
-from mmseg.utils import get_root_logger
 try:
     import apex
 except:
     print('apex is not installed')
 
+from tqdm import tqdm
+from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.runner import build_optimizer, build_runner
+from torch.utils.data import Dataset
+from mmseg.core import DistEvalHook, EvalHook
+from mmseg.datasets import build_dataloader, build_dataset
+from mmseg.utils import get_root_logger
+
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [torch.ones_like(tensor)
+        for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
+class Dataset(Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __len__(self):
+        return len(self.data)
 
 def set_random_seed(seed, deterministic=False):
     """Set random seed.
@@ -33,6 +66,28 @@ def set_random_seed(seed, deterministic=False):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+def fast_eval_wrapper(dataloaders, model, cfg, distributed):
+    for idx, dataloader in enumerate(dataloaders):
+        all_data = []
+        for data in tqdm(dataloader):
+            new_data = data.copy()
+            for i, newd in enumerate(new_data['img'].data):
+                output = model.module.extract_feat(newd.cuda(non_blocking=True))
+                new_data['img'].data[i] = tuple([concat_all_gather(o).detach().cpu() for o in \
+                    output]) if isinstance(output, tuple) else concat_all_gather(output).detach().cpu() 
+            all_data.append(new_data)
+        dataset = Dataset(all_data)
+        dataloaders[idx] = build_dataloader(
+            dataset,
+            cfg.data.samples_per_gpu,
+            cfg.data.workers_per_gpu,
+            # cfg.gpus will be ignored if distributed
+            len(cfg.gpu_ids),
+            dist=distributed,
+            seed=cfg.seed,
+            drop_last=True)
+        model.module.extract_feat = lambda x: x
+    return dataloaders, model
 
 def train_segmentor(model,
                     dataset,
@@ -89,6 +144,9 @@ def train_segmentor(model,
         warnings.warn(
             'config is now expected to have a `runner` section, '
             'please set `runner` in your config.', UserWarning)
+
+    if cfg.get('fast_eval', False):
+        data_loaders, model = fast_eval_wrapper(data_loaders, model, cfg, distributed)
 
     runner = build_runner(
         cfg.runner,

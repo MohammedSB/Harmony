@@ -26,6 +26,7 @@ import datetime
 import subprocess
 import platform
 from collections import defaultdict, deque
+from itertools import chain, combinations, permutations
 
 import numpy as np
 import torch
@@ -160,6 +161,9 @@ class Solarization(object):
         else:
             return img
 
+def power_set_permutations(iterable):
+    s = list(iterable)
+    return list("_".join(t) for t in chain.from_iterable(permutations(t) for t in chain.from_iterable(combinations(s, r) for r in range(len(s)+1))))
 
 def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_name, patch_size):
     if os.path.isfile(pretrained_weights):
@@ -729,6 +733,30 @@ def has_batchnorms(model):
             return True
     return False
 
+def all_gather_batch(tensors):
+    """
+    Performs all_gather operation on the provided tensors.
+    """
+    # Queue the gathered tensors
+    world_size = get_world_size()
+    # There is no need for reduction in the single-proc case
+    if world_size == 1:
+        return tensors
+    tensor_list = []
+    output_tensor = []
+    for tensor in tensors:
+        tensor_all = [torch.ones_like(tensor) for _ in range(world_size)]
+        dist.all_gather(
+            tensor_all,
+            tensor,
+            async_op=False  # performance opt
+        )
+
+        tensor_list.append(tensor_all)
+
+    for tensor_all in tensor_list:
+        output_tensor.append(torch.cat(tensor_all, dim=0))
+    return output_tensor
 
 def concat_all_gather(tensor):
     """

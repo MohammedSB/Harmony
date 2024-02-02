@@ -93,7 +93,7 @@ def get_args_parser():
     parser.add_argument('--lambda2', default=1.0, type=float, help="""loss weight for beit 
         loss over masked patch tokens (Default: 1.0)""")
     parser.add_argument('--objective', default='dino', type=str,
-        choices=['dino', 'ibot', 'ibot_mae', 'mae_ibot', 'dino_mae', 'mae_dino' 'harmony'],
+        choices=utils.power_set_permutations(['dino', 'ibot', 'mae', 'clip']),
         help="The method to use for training the model")
 
     # Temperature teacher parameters
@@ -344,8 +344,10 @@ def train_one_epoch(model, data_loader,
             images, captions = data
             masks = None
         
+        
         # move images to gpu
         images = [im.cuda(non_blocking=True) for im in images]
+        captions = captions.cuda()
 
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
@@ -357,7 +359,7 @@ def train_one_epoch(model, data_loader,
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             model_output = model(images, epoch, masks=masks, captions=captions)
-            disc_loss, gen_loss = model_output["disc_loss"], model_output["gen_loss"]
+            disc_loss, gen_loss, clip_loss = model_output["disc_loss"], model_output["gen_loss"], model_output["clip_loss"]
             loss = model_output["loss"]
 
         if not math.isfinite(loss.item()):
@@ -401,6 +403,7 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(loss=loss.item())
         metric_logger.update(discriminative_loss=disc_loss.item())
         metric_logger.update(generative_loss=gen_loss.item())
+        metric_logger.update(clip_loss=clip_loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
     

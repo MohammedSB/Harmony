@@ -149,7 +149,7 @@ class GenerativePath(nn.Module):
                 latent, mask, ids_restore = self.forward_encoder(imgs[i + 1], mask_ratio) # +1 to skip simply augmented img
                 pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
 
-                loss = mae_loss(self.patchify(imgs[i]), pred, mask, self.norm_pix_loss)
+                loss = mae_loss(self.patchify(imgs[i + 1]), pred, mask, self.norm_pix_loss)
                 
                 preds.append(pred)
                 masks.append(mask)
@@ -158,7 +158,7 @@ class GenerativePath(nn.Module):
             latent, masks, ids_restore = self.forward_encoder(imgs[0], mask_ratio)
             preds = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
 
-            losses = mae_loss(self.patchify(imgs[0]), pred, mask, self.norm_pix_loss)
+            losses = mae_loss(self.patchify(imgs[0]), preds, masks, self.norm_pix_loss)
         return {
             "output": preds,
             "mask": masks,
