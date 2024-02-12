@@ -74,7 +74,7 @@ def get_args_parser():
     parser.add_argument('--norm_in_head', default=None,
         help="Norm to use in head for discriminative path (Default: None)")
     parser.add_argument('--act_in_head', default='gelu',
-        help="Whether to use batch normalizations in projection head (Default: gelu)")
+        help="Activation function in the projection head (Default: gelu)")
     parser.add_argument('--use_masked_im_modeling', default=True, type=utils.bool_flag,
         help="Whether to use masked image modeling (mim) in backbone (Default: True)")
     parser.add_argument('--pred_ratio', default=0.3, type=float, nargs='+', help="""Ratio of partial prediction.
@@ -86,7 +86,8 @@ def get_args_parser():
         image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
     # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
     #     help="Whether to use batch normalizations in projection head (Default: False)")
-    parser.add_argument('--separate_gen_model', default=False, type=bool, help="""whether to separate the
+    parser.add_argument('--mask_ratio', default=0.75, type=float, help="Masking ration for MAE.")
+    parser.add_argument('--separate_gen_model', default=False, type=utils.bool_flag, help="""whether to separate the
         generative path""")
     parser.add_argument('--lambda1', default=1.0, type=float, help="""loss weight for dino
         loss over [CLS] tokens (Default: 1.0)""")
@@ -140,7 +141,7 @@ def get_args_parser():
     parser.add_argument('--optimizer', default='adamw', type=str,
         choices=['adamw', 'sgd', 'lars'], help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
-    parser.add_argument('--reconstruct_global_crops', type=bool, default=True, help="""Whether to reconstruct global crops or
+    parser.add_argument('--reconstruct_global_crops', type=utils.bool_flag, default=True, help="""Whether to reconstruct global crops or
                         entire image""")
 
     # Multi-crop parameters
@@ -334,7 +335,6 @@ def train_one_epoch(model, data_loader,
     params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
     params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
 
-
     for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
 
         if len(data) == 3:
@@ -393,7 +393,8 @@ def train_one_epoch(model, data_loader,
             for param_q, param_k in zip(params_q, params_k):
                 if args.separate_gen_model and names_q[param_index] in names_common_gen:
                     gen_param_index = names_g.index(names_q[param_index])
-                    param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + params_g[gen_param_index].detach().data) / 2 ) )
+                    param_g = params_g[gen_param_index]
+                    param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + param_g.detach().data) / 2 ) )
                 else:
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
                 param_index+=1
