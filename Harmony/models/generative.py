@@ -8,12 +8,11 @@ from Harmony.losses import mae_loss
 class GenerativePath(nn.Module):
     def __init__(self, backbone, meta, in_chans=3,
                 decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                mlp_ratio=4, norm_layer=nn.LayerNorm, norm_pix_loss=False):
+                mlp_ratio=4, norm_layer=nn.LayerNorm):
         super().__init__()
         self.backbone = backbone
         self.meta = meta
 
-        self.norm_pix_loss = norm_pix_loss
         self.patch_embed = backbone.patch_embed
         num_patches = self.backbone.patch_embed.num_patches
 
@@ -158,7 +157,7 @@ class GenerativePath(nn.Module):
             latent, masks, ids_restore = self.forward_encoder(imgs[0], mask_ratio)
             preds = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
 
-            losses = mae_loss(self.patchify(imgs[0]), preds, masks, self.norm_pix_loss)
+            losses = mae_loss(self.patchify(imgs[0]), preds, masks, self.meta['norm_pix_loss'])
         return {
             "output": preds,
             "mask": masks,

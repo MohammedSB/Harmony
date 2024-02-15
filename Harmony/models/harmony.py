@@ -78,6 +78,12 @@ class Harmony(torch.nn.Module):
         if "mae" in self.objective:
             self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta).cuda()
             self.is_generative = True
+
+            self.mask_ratio_scheduler = np.concatenate((
+                np.linspace(self.meta['wamrup_mask_ratio'],
+                            self.meta['mask_ratio'], self.meta['mask_ratio_warmup_epochs']),
+                np.ones(self.meta['epochs'] -  self.meta['mask_ratio_warmup_epochs']) * self.meta['mask_ratio']
+            ))
         
         if "clip" in self.objective:
             self.contrastive_loss = CLIPLoss()
@@ -145,7 +151,7 @@ class Harmony(torch.nn.Module):
             outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
 
         if self.is_generative:
-            output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.meta['mask_ratio']) 
+            output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 
             
             outputs["pred"] = output["output"]
             outputs["mask"] = output["mask"]

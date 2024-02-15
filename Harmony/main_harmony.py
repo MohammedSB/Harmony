@@ -86,7 +86,9 @@ def get_args_parser():
         image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
     # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
     #     help="Whether to use batch normalizations in projection head (Default: False)")
-    parser.add_argument('--mask_ratio', default=0.75, type=float, help="Masking ration for MAE.")
+    parser.add_argument('--wamrup_mask_ratio', default=0.75, type=float, help="Initial masking ratio for MAE.")
+    parser.add_argument('--mask_ratio', default=0.75, type=float, help="Final value for masking ratio for MAE, after linear warmup.")
+    parser.add_argument('--mask_ratio_warmup_epochs', default=10, type=int)
     parser.add_argument('--separate_gen_model', default=False, type=utils.bool_flag, help="""whether to separate the
         generative path""")
     parser.add_argument('--lambda1', default=1.0, type=float, help="""loss weight for dino
@@ -143,6 +145,7 @@ def get_args_parser():
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
     parser.add_argument('--reconstruct_global_crops', type=utils.bool_flag, default=True, help="""Whether to reconstruct global crops or
                         entire image""")
+    parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=False)
 
     # Multi-crop parameters
     parser.add_argument('--global_crops_number', type=int, default=2, help="""Number of global
