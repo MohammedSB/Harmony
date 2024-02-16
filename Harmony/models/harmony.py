@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torchvision import models as torchvision_models
 
+import Harmony.utils as utils
 import Harmony.models.vision_transformer as vits
 from Harmony.models.transformer import Transformer, LayerNorm
 from Harmony.losses import CLIPLoss
@@ -12,9 +13,11 @@ from .discriminative import DiscriminativePath
 from .utils import get_embedding_size_from_arch
 
 class Harmony(torch.nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, meta_training_data=None):
         super().__init__()
         self.meta = vars(args)
+        if meta_training_data != None:
+            self.meta = {**self.meta, **meta_training_data}
         self.objective = args.objective
 
         # initialize text encoder properties (vit-b)
@@ -80,10 +83,16 @@ class Harmony(torch.nn.Module):
             self.is_generative = True
 
             self.mask_ratio_scheduler = np.concatenate((
-                np.linspace(self.meta['wamrup_mask_ratio'],
-                            self.meta['mask_ratio'], self.meta['mask_ratio_warmup_epochs']),
-                np.ones(self.meta['epochs'] -  self.meta['mask_ratio_warmup_epochs']) * self.meta['mask_ratio']
+                np.linspace(self.meta['mask_ratio'],
+                            self.meta['mask_ratio_end'], self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch']),
+                np.ones(self.meta['num_iterations_total'] -  (self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch'])) * self.meta['mask_ratio']
             ))
+            self.hard_labels_weight_scheduler = utils.cosine_scheduler(
+                base_value=self.meta['hard_labels_weight'],
+                final_value=self.meta['hard_labels_weight_end'],
+                epochs=self.meta['epochs'],
+                niter_per_ep=self.meta['num_iterations_per_epoch']
+            )
         
         if "clip" in self.objective:
             self.contrastive_loss = CLIPLoss()
@@ -127,7 +136,7 @@ class Harmony(torch.nn.Module):
 
         return x
             
-    def forward(self, images, epoch, captions=None, masks=None):
+    def forward(self, images, epoch, iteration, captions=None, masks=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
         outputs = {"loss": loss,
                    "disc_loss": torch.zeros(1),
@@ -138,7 +147,7 @@ class Harmony(torch.nn.Module):
             text_embed = self.encode_text(captions)
             image_embed = self.image_encoder(images[1]) 
             image_embed = image_embed @ self.image_projection
-            output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp())
+            output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp(), hard_weight=self.hard_labels_weight_scheduler[iteration])
             outputs["clip_loss"] = output['clip_loss']
             outputs["loss"] += output['clip_loss']
 

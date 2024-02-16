@@ -5,12 +5,12 @@ import torch.nn.functional as F
 import Harmony.utils as utils
 
 class CLIPLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, soft_labels=False):
         super().__init__()
         self.labels = None
         self.last_local_batch_size = None
 
-    def forward(self, image_embed, text_embed, logit_scale):
+    def forward(self, image_embed, text_embed, logit_scale, image_embed_teacher=None, hard_weight=1.0, temp=0.1):
         local_batch_size = image_embed.size(0)
 
         if local_batch_size != self.last_local_batch_size:
@@ -31,8 +31,23 @@ class CLIPLoss(nn.Module):
         logits_per_image = logit_scale * image_embed @ text_embed_all.t()
         logits_per_text = logit_scale * text_embed @ image_embed_all.t()
 
-        loss = (F.cross_entropy(logits_per_image, self.labels) + \
-            F.cross_entropy(logits_per_text, self.labels)) / 2
+        image_loss = F.cross_entropy(logits_per_image, self.labels)
+        text_loss = F.cross_entropy(logits_per_text, self.labels)
+
+        loss = hard_weight * ((image_loss + text_loss) / 2)
+
+        if hard_weight != 1.0 and image_embed_teacher != None:
+
+            image_embed_teacher_all = utils.all_gather_batch([image_embed_teacher])
+
+            logits_per_image_teacher = (image_embed_teacher @ text_embed_all.t())/temp
+            logits_per_text_teacher = (text_embed @ image_embed_teacher_all.t())/temp
+
+            image_loss_teacher = F.cross_entropy(logits_per_image, logits_per_image_teacher) 
+            text_loss_teacher = F.cross_entropy(logits_per_text, logits_per_text_teacher) 
+
+            soft_weight = 1 - hard_weight
+            loss = loss + (soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )) # add scaled soft loss
 
         # compute accuracy
         with torch.no_grad():

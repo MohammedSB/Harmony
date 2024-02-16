@@ -86,9 +86,9 @@ def get_args_parser():
         image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
     # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
     #     help="Whether to use batch normalizations in projection head (Default: False)")
-    parser.add_argument('--wamrup_mask_ratio', default=0.75, type=float, help="Initial masking ratio for MAE.")
-    parser.add_argument('--mask_ratio', default=0.75, type=float, help="Final value for masking ratio for MAE, after linear warmup.")
-    parser.add_argument('--mask_ratio_warmup_epochs', default=10, type=int)
+    parser.add_argument('--mask_ratio', default=0.75, type=float, help="Initial masking ratio for MAE.")
+    parser.add_argument('--mask_ratio_end', default=0.75, type=float, help="Final value for masking ratio for MAE, after linear warmup.")
+    parser.add_argument('--mask_ratio_epochs', default=10, type=int)
     parser.add_argument('--separate_gen_model', default=False, type=utils.bool_flag, help="""whether to separate the
         generative path""")
     parser.add_argument('--lambda1', default=1.0, type=float, help="""loss weight for dino
@@ -146,6 +146,10 @@ def get_args_parser():
     parser.add_argument('--reconstruct_global_crops', type=utils.bool_flag, default=True, help="""Whether to reconstruct global crops or
                         entire image""")
     parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=False)
+    parser.add_argument('--hard_labels_weight', type=float, default=1.0, help="""Weight for using the hard labels in CLIP""")
+    parser.add_argument('--hard_labels_weight_end', type=float, default=0.05, help="""Final value for hard labels weight in CLIP, after scheduler. 
+                                                                                Same value as --hard_labels_weight for turning off soft clip loss.""")
+    parser.add_argument('--hard_labels_weight_epochs', default=10, type=int)
 
     # Multi-crop parameters
     parser.add_argument('--global_crops_number', type=int, default=2, help="""Number of global
@@ -225,7 +229,13 @@ def train(args):
     )
     print(f"Data loaded: there are {len(dataset)} images.")
 
-    model = Harmony(args=args)
+    meta_training_data = { 
+        'current_iteration': 0,
+        'num_iterations_per_epoch': len(data_loader),
+        'num_iterations_total': len(data_loader) * args.epochs
+    }
+
+    model = Harmony(args=args, meta_training_data=meta_training_data)
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -277,9 +287,9 @@ def train(args):
             data_loader.dataset.set_epoch(epoch)
 
         # ============ training one epoch ... ============        
-        train_stats = train_one_epoch(model, data_loader, optimizer,
+        train_stats, meta_training_data = train_one_epoch(model, data_loader, optimizer,
             lr_schedule, wd_schedule, momentum_schedule,
-            epoch, fp16_scaler, args)
+            epoch, fp16_scaler, args, meta_training_data)
 
         # ============ writing logs ... ============
         save_dict = {
@@ -312,7 +322,7 @@ def train(args):
 
 def train_one_epoch(model, data_loader,
                     optimizer, lr_schedule, wd_schedule, momentum_schedule,epoch,
-                    fp16_scaler, args):
+                    fp16_scaler, args, meta_training_data=None):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
 
@@ -340,6 +350,8 @@ def train_one_epoch(model, data_loader,
 
     for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
 
+        iteration = meta_training_data['current_iteration']
+
         if len(data) == 3:
             images, captions, masks = data
             masks = [m.cuda(non_blocking=True) for m in masks]
@@ -361,7 +373,7 @@ def train_one_epoch(model, data_loader,
 
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            model_output = model(images, epoch, masks=masks, captions=captions)
+            model_output = model(images, epoch, iteration, masks=masks, captions=captions)
             disc_loss, gen_loss, clip_loss = model_output["disc_loss"], model_output["gen_loss"], model_output["clip_loss"]
             loss = model_output["loss"]
 
@@ -410,12 +422,17 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(clip_loss=clip_loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
+        metric_logger.update(clip_hard_weight=model.hard_labels_weight_scheduler[iteration])
+        metric_logger.update(mask_ratio=round(model.mask_ratio_scheduler[iteration], 2))
+        metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
+
+        meta_training_data['current_iteration'] += 1
     
     
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, meta_training_data
     
 
 if __name__ == '__main__':
