@@ -91,9 +91,9 @@ def get_args_parser():
     parser.add_argument('--mask_ratio_epochs', default=10, type=int)
     parser.add_argument('--separate_gen_model', default=False, type=utils.bool_flag, help="""whether to separate the
         generative path""")
-    parser.add_argument('--lambda1', default=1.0, type=float, help="""loss weight for dino
+    parser.add_argument('--lambda1', default=0.5, type=float, help="""loss weight for dino
         loss over [CLS] tokens (Default: 1.0)""")
-    parser.add_argument('--lambda2', default=1.0, type=float, help="""loss weight for beit 
+    parser.add_argument('--lambda2', default=0.5, type=float, help="""loss weight for beit 
         loss over masked patch tokens (Default: 1.0)""")
     parser.add_argument('--objective', default='dino', type=str,
         choices=utils.power_set_permutations(['dino', 'ibot', 'mae', 'clip']),
