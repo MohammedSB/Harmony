@@ -424,7 +424,7 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         metric_logger.update(clip_hard_weight=model.hard_labels_weight_scheduler[iteration])
         metric_logger.update(mask_ratio=round(model.mask_ratio_scheduler[iteration], 2))
-        metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
+        # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
 
         meta_training_data['current_iteration'] += 1
     
