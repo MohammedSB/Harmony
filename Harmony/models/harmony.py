@@ -156,7 +156,7 @@ class Harmony(torch.nn.Module):
             
             outputs["teacher_output"] = output["teacher_output"]
             outputs["teacher_output"] = output["student_output"]
-            outputs["disc_loss"] = (output["loss"] * self.meta["disc_weight"])
+            outputs["disc_loss"] = output["loss"] * self.meta["disc_weight"]
             outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
 
         if self.is_generative:
@@ -164,7 +164,7 @@ class Harmony(torch.nn.Module):
             
             outputs["pred"] = output["output"]
             outputs["mask"] = output["mask"]
-            outputs["gen_loss"] = output["loss"]
-            outputs["loss"] += output["loss"]
+            outputs["gen_loss"] = output["loss"] * self.meta["gen_weight"] 
+            outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
 
         return outputs

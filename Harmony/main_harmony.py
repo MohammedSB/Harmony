@@ -119,6 +119,7 @@ def get_args_parser():
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
     parser.add_argument('--disc_weight', type=float, default=1, help="""Loss scaling for discriminative path""")
+    parser.add_argument('--gen_weight', type=float, default=1, help="""Loss scaling for generative path""")
     parser.add_argument('--weight_decay', type=float, default=0.04, help="""Initial value of the
         weight decay. With ViT, a smaller value at the beginning of training works well.""")
     parser.add_argument('--weight_decay_end', type=float, default=0.4, help="""Final value of the
