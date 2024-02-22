@@ -85,7 +85,7 @@ class Harmony(torch.nn.Module):
             self.mask_ratio_scheduler = np.concatenate((
                 np.linspace(self.meta['mask_ratio'],
                             self.meta['mask_ratio_end'], self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch']),
-                np.ones(self.meta['num_iterations_total'] -  (self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch'])) * self.meta['mask_ratio']
+                np.ones(self.meta['num_iterations_total'] -  (self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch'])) * self.meta['mask_ratio_end']
             ))
             self.hard_labels_weight_scheduler = utils.cosine_scheduler(
                 base_value=self.meta['hard_labels_weight'],
