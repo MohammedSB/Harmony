@@ -151,7 +151,7 @@ class Harmony(torch.nn.Module):
         
         if self.is_contrastive:
             text_embed = self.encode_text(captions)
-            image_embed = self.image_encoder(images[1]) 
+            image_embed = self.image_encoder(images[1]) # input simply augmeneted image
             image_embed = image_embed @ self.image_projection
             output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp(), hard_weight=self.hard_labels_weight_scheduler[iteration])
             outputs["clip_loss"] = output['clip_loss']

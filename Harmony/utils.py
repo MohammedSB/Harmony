@@ -85,8 +85,8 @@ class DataAugmentation(object):
 
         # simple augmentation
         self.simple_aug = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
-            transforms.RandomHorizontalFlip(),
+            transforms.RandomResizedCrop(224, scale=(0.4, 1.0), interpolation=3),  # 3 is bicubic
+            # transforms.RandomHorizontalFlip(),
             normalize
         ])
 
