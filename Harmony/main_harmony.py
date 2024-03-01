@@ -148,7 +148,7 @@ def get_args_parser():
                         entire image""")
     parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=False)
     parser.add_argument('--hard_labels_weight', type=float, default=1.0, help="""Weight for using the hard labels in CLIP""")
-    parser.add_argument('--hard_labels_weight_end', type=float, default=0.05, help="""Final value for hard labels weight in CLIP, after scheduler. 
+    parser.add_argument('--hard_labels_weight_end', type=float, default=1.0, help="""Final value for hard labels weight in CLIP, after scheduler. 
                                                                                 Same value as --hard_labels_weight for turning off soft clip loss.""")
     parser.add_argument('--hard_labels_weight_epochs', default=10, type=int)
 
@@ -180,8 +180,7 @@ def get_args_parser():
 
 
 def train(args):
-    # adjust args for dino
-    if "dino" in args.objective:
+    if "ibot" not in args.objective:
         args.use_masked_im_modeling = False
 
     utils.init_distributed_mode(args)
@@ -328,26 +327,27 @@ def train_one_epoch(model, data_loader,
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
 
     # common params
-    names_q, params_q, names_k, params_k = [], [], [], []
-    for name_q, param_q in model.discriminative_path.student.module.named_parameters():
-        names_q.append(name_q)
-        params_q.append(param_q)
-    for name_k, param_k in model.discriminative_path.teacher_without_ddp.named_parameters():
-        names_k.append(name_k)
-        params_k.append(param_k)
-        
-    if args.separate_gen_model:
-        names_g_tmp, params_g_tmp = [], []
-        for name_g, param_g in model.generative_path.named_parameters():
-            names_g_tmp.append(name_g)
-            params_g_tmp.append(param_g)
-        names_common_gen = list(set(names_q) & set(names_g_tmp))
-        params_g = [param_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
-        names_g = [name_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
+    if model.is_discriminative:
+        names_q, params_q, names_k, params_k = [], [], [], []
+        for name_q, param_q in model.discriminative_path.student.module.named_parameters():
+            names_q.append(name_q)
+            params_q.append(param_q)
+        for name_k, param_k in model.discriminative_path.teacher_without_ddp.named_parameters():
+            names_k.append(name_k)
+            params_k.append(param_k)
+            
+        if args.separate_gen_model:
+            names_g_tmp, params_g_tmp = [], []
+            for name_g, param_g in model.generative_path.named_parameters():
+                names_g_tmp.append(name_g)
+                params_g_tmp.append(param_g)
+            names_common_gen = list(set(names_q) & set(names_g_tmp))
+            params_g = [param_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
+            names_g = [name_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
 
-    names_common = list(set(names_q) & set(names_k))
-    params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
-    params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
+        names_common = list(set(names_q) & set(names_k))
+        params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
+        params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
 
     for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
 
@@ -385,35 +385,39 @@ def train_one_epoch(model, data_loader,
         # student update
         optimizer.zero_grad()
         param_norms = None
+        student = model.discriminative_path.student if model.is_discriminative else model.image_encoder
         if fp16_scaler is None:
             loss.backward()
             if args.clip_grad:
-                param_norms = utils.clip_gradients(model.discriminative_path.student, args.clip_grad)
-            utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
+                param_norms = utils.clip_gradients(student, args.clip_grad)
+            if model.is_discriminative:
+                utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
                                               args.freeze_last_layer)
             optimizer.step()
         else:
             fp16_scaler.scale(loss).backward()
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-                param_norms = utils.clip_gradients(model.discriminative_path.student, args.clip_grad)
-            utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
+                param_norms = utils.clip_gradients(student, args.clip_grad)
+            if model.is_discriminative:
+                utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
                                               args.freeze_last_layer)
             fp16_scaler.step(optimizer)
             fp16_scaler.update()
 
         # EMA update for the teacher
-        with torch.no_grad():
-            m = momentum_schedule[it]  # momentum parameter
-            param_index = 0
-            for param_q, param_k in zip(params_q, params_k):
-                if args.separate_gen_model and names_q[param_index] in names_common_gen:
-                    gen_param_index = names_g.index(names_q[param_index])
-                    param_g = params_g[gen_param_index]
-                    param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + param_g.detach().data) / 2 ) )
-                else:
-                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-                param_index+=1
+        if model.is_discriminative:
+            with torch.no_grad():
+                m = momentum_schedule[it]  # momentum parameter
+                param_index = 0
+                for param_q, param_k in zip(params_q, params_k):
+                    if args.separate_gen_model and names_q[param_index] in names_common_gen:
+                        gen_param_index = names_g.index(names_q[param_index])
+                        param_g = params_g[gen_param_index]
+                        param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + param_g.detach().data) / 2 ) )
+                    else:
+                        param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+                    param_index+=1
 
         # logging
         torch.cuda.synchronize()
@@ -423,8 +427,10 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(clip_loss=clip_loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
-        metric_logger.update(clip_hard_weight=model.hard_labels_weight_scheduler[iteration])
-        metric_logger.update(mask_ratio=round(model.mask_ratio_scheduler[iteration], 2))
+        if model.is_contrastive:
+            metric_logger.update(clip_hard_weight=model.hard_labels_weight_scheduler[iteration])
+        if model.is_generative:
+            metric_logger.update(mask_ratio=round(model.mask_ratio_scheduler[iteration], 2))
         # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
 
         meta_training_data['current_iteration'] += 1

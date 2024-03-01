@@ -72,11 +72,13 @@ class Harmony(torch.nn.Module):
         self.meta['embed_dim'] = self.image_encoder.embed_dim
        
         # initialize the variables
-        self.is_discriminative = True
+        self.is_discriminative = False
         self.is_generative = False
         self.is_contrastive = False 
 
-        self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
+        if "dino" in self.objective or "ibot" in self.objective:
+            self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).cuda()
+            self.is_discriminative = True
 
         if "mae" in self.objective:
             self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta).cuda()
@@ -87,16 +89,20 @@ class Harmony(torch.nn.Module):
                             self.meta['mask_ratio_end'], self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch']),
                 np.ones(self.meta['num_iterations_total'] -  (self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch'])) * self.meta['mask_ratio_end']
             ))
+
+        if "clip" in self.objective:
+            self.contrastive_loss = CLIPLoss()
+            self.is_contrastive = True
+
             self.hard_labels_weight_scheduler = utils.cosine_scheduler(
                 base_value=self.meta['hard_labels_weight'],
                 final_value=self.meta['hard_labels_weight_end'],
                 epochs=self.meta['epochs'],
                 niter_per_ep=self.meta['num_iterations_per_epoch']
             )
-        
-        if "clip" in self.objective:
-            self.contrastive_loss = CLIPLoss()
-            self.is_contrastive = True
+
+        if not self.is_discriminative:
+            self.image_encoder = self.image_encoder.cuda()
 
     def initialize_contrastive_parameters(self):
         nn.init.normal_(self.text_embedding.weight, std=0.02)
