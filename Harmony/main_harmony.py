@@ -297,11 +297,11 @@ def train(args):
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'disc_loss': model.discriminative_path.loss.state_dict(),
+            'disc_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
         }
 
         # saving teacher vit separately
-        main_vit = model.discriminative_path.teacher.backbone.state_dict()
+        main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()

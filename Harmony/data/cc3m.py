@@ -23,8 +23,8 @@ class CC3M(torch.utils.data.Dataset):
         self.transform = transform
         self.tokenizer = tokneizer
 
-        # self.images = self.images[:10]
-        # self.captions = self.captions[:10]
+        self.images = self.images[:10]
+        self.captions = self.captions[:10]
 
         assert len(self.captions) == len(self.images)
         print("Number of images loaded in CC3M are:", {self.__len__()})
