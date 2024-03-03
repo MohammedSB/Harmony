@@ -20,6 +20,7 @@ class CC3M(torch.utils.data.Dataset):
         self.root = root
         self.folders =  [f for f in os.scandir(root) if f.is_dir()]
         self.images, self.captions = save_image_captions_from_folders(self.folders, self.root)
+        self.images.sort(), self.captions.sort() # sort to make sure there is correspondence
         self.transform = transform
         self.tokenizer = tokneizer
 
