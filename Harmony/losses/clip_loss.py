@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import Harmony.utils as utils
 
 class CLIPLoss(nn.Module):
-    def __init__(self, soft_labels=False):
+    def __init__(self):
         super().__init__()
         self.labels = None
         self.last_local_batch_size = None
@@ -46,7 +46,7 @@ class CLIPLoss(nn.Module):
             image_loss_teacher = F.cross_entropy(logits_per_image, logits_per_image_teacher) 
             text_loss_teacher = F.cross_entropy(logits_per_text, logits_per_text_teacher) 
 
-            soft_weight = 1 - hard_weight
+            soft_weight = 1.0 - hard_weight
             loss = loss + (soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )) # add scaled soft loss
 
         # compute accuracy

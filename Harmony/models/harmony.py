@@ -41,7 +41,7 @@ class Harmony(torch.nn.Module):
             heads=self.transformer_heads,
             attn_mask=self.build_attention_mask(),
         ).cuda()
-        self.image_projection = nn.Parameter(torch.empty(self.vision_width, self. embed_dim)).cuda()
+        self.image_projection = nn.Parameter(torch.empty(self.vision_width, self.embed_dim)).cuda()
         self.text_embedding = torch.nn.Embedding(self.vocab_size, self.transformer_width).cuda()
         self.text_positional_embedding = torch.nn.Parameter(torch.empty(self.context_length, self.transformer_width)).cuda()
         self.text_norm = LayerNorm(self.transformer_width).cuda()
@@ -52,10 +52,11 @@ class Harmony(torch.nn.Module):
 
         # define the image encoder(s)
         try: 
+            self.meta["return_all_tokens"] = True if "ibot" in self.objective else False
             self.image_encoder = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
                 drop_path_rate=self.meta['drop_path_rate'],
-                return_all_tokens=True if "ibot" in self.objective else False,
+                return_all_tokens=self.meta["return_all_tokens"],
                 masked_im_modeling=self.meta['use_masked_im_modeling']
             )
             if self.meta['separate_gen_model']:
@@ -150,15 +151,24 @@ class Harmony(torch.nn.Module):
                    "clip_loss": torch.zeros(1)}
         
         if self.is_contrastive:
+
+            # TODO: do this in a better way
+            self.image_encoder.masked_im_modeling = False
+            self.image_encoder.return_all_tokens = False
+
             text_embed = self.encode_text(captions)
             image_embed = self.image_encoder(images[1]) # input simply augmeneted image
             image_embed = image_embed @ self.image_projection
             output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp(), hard_weight=self.hard_labels_weight_scheduler[iteration])
+            
+            self.image_encoder.masked_im_modeling = self.meta['use_masked_im_modeling']
+            self.image_encoder.return_all_tokens = self.meta["return_all_tokens"]
+
             outputs["clip_loss"] = output['clip_loss']
             outputs["loss"] += output['clip_loss']
 
         if self.is_discriminative:
-            output = self.discriminative_path(images[1:], epoch, masks) # first image is simply augmeneted image
+            output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
             
             outputs["teacher_output"] = output["teacher_output"]
             outputs["teacher_output"] = output["student_output"]

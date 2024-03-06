@@ -114,7 +114,7 @@ def get_args_parser():
         help='Number of warmup epochs for the teacher temperature (Default: 30).')
 
     # Training/Optimization parameters
-    parser.add_argument('--use_fp16', type=utils.bool_flag, default=True, help="""Whether or not
+    parser.add_argument('--use_fp16', type=utils.bool_flag, default=False, help="""Whether or not
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
@@ -146,7 +146,7 @@ def get_args_parser():
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
     parser.add_argument('--reconstruct_global_crops', type=utils.bool_flag, default=True, help="""Whether to reconstruct global crops or
                         entire image""")
-    parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=False)
+    parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=True)
     parser.add_argument('--hard_labels_weight', type=float, default=1.0, help="""Weight for using the hard labels in CLIP""")
     parser.add_argument('--hard_labels_weight_end', type=float, default=1.0, help="""Final value for hard labels weight in CLIP, after scheduler. 
                                                                                 Same value as --hard_labels_weight for turning off soft clip loss.""")
@@ -198,7 +198,7 @@ def train(args):
     transform = DataAugmentation(
         args.global_crops_scale,
         args.local_crops_scale,
-        args.global_crops_number, # for IBot
+        args.global_crops_number, 
         args.local_crops_number,
         args.objective,
     )
@@ -301,7 +301,7 @@ def train(args):
         }
 
         # saving teacher vit separately
-        main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder
+        main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict()
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
