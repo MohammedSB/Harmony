@@ -91,6 +91,7 @@ class Harmony(torch.nn.Module):
             # check if to whether to use labels 
             self.use_soft_labels = np.any(self.hard_labels_weight_scheduler < 1.0) 
             if self.use_soft_labels:
+                print("Using soft labels!")
                 self.text_encoder_teacher = TextEncoder(embed_dim=text_embed_dim)
                 self.text_encoder_teacher  = nn.parallel.DistributedDataParallel(self.text_encoder_teacher, device_ids=[self.meta['gpu']])
                 for param in self.text_encoder_teacher.parameters():
