@@ -7,6 +7,7 @@ from torchvision import models as torchvision_models
 import Harmony.utils as utils
 import Harmony.models.vision_transformer as vits
 from Harmony.models.transformer import Transformer, LayerNorm
+from Harmony.models.text_encoder import TextEncoder
 from Harmony.losses import CLIPLoss
 from .generative import GenerativePath
 from .discriminative import DiscriminativePath
@@ -21,35 +22,12 @@ class Harmony(torch.nn.Module):
         self.objective = args.objective
 
         # initialize text encoder properties (vit-b)
-        self.context_length = 77
-        self.vocab_size = 49408
-        self.transformer_width = 512
-        self.transformer_heads = 8 
-        self.transformer_layers = 12
-        self.embed_dim = 512
         self.vision_width = get_embedding_size_from_arch(self.meta['arch'])
         
         # define the model arch (i.e. dino, ibot, dino+mae, ibot+mae, harmony)
         self.define_arch() 
 
     def define_arch(self):
-
-        # define the text encoder and peripherals
-        self.text_encoder = Transformer(
-            width=self.transformer_width,
-            layers=self.transformer_layers,
-            heads=self.transformer_heads,
-            attn_mask=self.build_attention_mask(),
-        ).cuda()
-        self.image_projection = nn.Parameter(torch.empty(self.vision_width, self.embed_dim)).cuda()
-        self.text_embedding = torch.nn.Embedding(self.vocab_size, self.transformer_width).cuda()
-        self.text_positional_embedding = torch.nn.Parameter(torch.empty(self.context_length, self.transformer_width)).cuda()
-        self.text_norm = LayerNorm(self.transformer_width).cuda()
-        self.text_projection = torch.nn.Parameter(torch.empty(self.transformer_width, self.embed_dim)).cuda()
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07)).cuda()
-        
-        self.initialize_contrastive_parameters()
-
         # define the image encoder(s)
         try: 
             self.meta["return_all_tokens"] = True if "ibot" in self.objective else False
@@ -83,6 +61,7 @@ class Harmony(torch.nn.Module):
 
         if "mae" in self.objective:
             self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta).cuda()
+            self.generative_path =  nn.parallel.DistributedDataParallel(self.generative_path, device_ids=[self.meta['gpu']])
             self.is_generative = True
 
             self.mask_ratio_scheduler = np.concatenate((
@@ -101,47 +80,24 @@ class Harmony(torch.nn.Module):
                 epochs=self.meta['epochs'],
                 niter_per_ep=self.meta['num_iterations_per_epoch']
             )
+            # define the text encoder and peripherals
+            text_embed_dim = 512
+            self.text_encoder = TextEncoder(embed_dim=text_embed_dim)
+            self.text_encoder = nn.parallel.DistributedDataParallel(self.text_encoder, device_ids=[self.meta['gpu']])
+            self.image_projection = nn.Parameter(torch.empty(self.vision_width, text_embed_dim)).cuda()
+            self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07)).cuda()
+            nn.init.normal_(self.image_projection, std=self.vision_width ** -0.5)
+
+            # check if to whether to use labels 
+            self.use_soft_labels = np.any(self.hard_labels_weight_scheduler < 1.0) 
+            if self.use_soft_labels:
+                self.text_encoder_teacher = TextEncoder(embed_dim=text_embed_dim)
+                self.text_encoder_teacher  = nn.parallel.DistributedDataParallel(self.text_encoder_teacher, device_ids=[self.meta['gpu']])
+                for param in self.text_encoder_teacher.parameters():
+                    param.requires_grad = False
 
         if not self.is_discriminative:
             self.image_encoder = self.image_encoder.cuda()
-
-    def initialize_contrastive_parameters(self):
-        nn.init.normal_(self.text_embedding.weight, std=0.02)
-        nn.init.normal_(self.text_positional_embedding, std=0.01)
-
-        proj_std = (self.text_encoder.width ** -0.5) * ((2 * self.text_encoder.layers) ** -0.5)
-        attn_std = self.text_encoder.width ** -0.5
-        fc_std = (2 * self.text_encoder.width) ** -0.5
-        for block in self.text_encoder.resblocks:
-            nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
-            nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
-            nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
-            nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
-
-        nn.init.normal_(self.image_projection, std=self.vision_width ** -0.5)
-        nn.init.normal_(self.text_projection, std=self.text_encoder.width ** -0.5)
-
-    def build_attention_mask(self):
-        # lazily create causal attention mask, with full attention between the vision tokens
-        # pytorch uses additive attention mask; fill with -inf
-        mask = torch.empty(self.context_length, self.context_length)
-        mask.fill_(float("-inf"))
-        mask.triu_(1)  # zero out the lower diagonal
-        return mask
-    
-    def encode_text(self, text):
-        x = self.text_embedding(text)  # [batch_size, n_ctx, d_model]
-        x = x + self.text_positional_embedding
-        x = x.permute(1, 0, 2)  # NLD -> LND
-        x = self.text_encoder(x)
-        x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.text_norm(x)
-
-        # x.shape = [batch_size, n_ctx, transformer.width]
-        # take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
-
-        return x
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
@@ -156,10 +112,27 @@ class Harmony(torch.nn.Module):
             self.image_encoder.masked_im_modeling = False
             self.image_encoder.return_all_tokens = False
 
-            text_embed = self.encode_text(captions)
+            text_embed = self.text_encoder(captions)
             image_embed = self.image_encoder(images[1]) # input simply augmeneted image
             image_embed = image_embed @ self.image_projection
-            output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp(), hard_weight=self.hard_labels_weight_scheduler[iteration])
+            hard_weight = self.hard_labels_weight_scheduler[iteration]
+
+            if self.use_soft_labels and self.is_discriminative:
+                # TODO: do this in a better way
+                self.discriminative_path.teacher.backbone.return_all_tokens = False
+                
+                image_embed_teacher = self.discriminative_path.teacher.backbone(images[1]) 
+                image_embed_teacher = image_embed_teacher @ self.image_projection
+                text_embed_teacher =  self.text_encoder_teacher(captions)
+
+                self.discriminative_path.teacher.backbone.return_all_tokens = self.meta["return_all_tokens"]
+            else:
+                image_embed_teacher = None
+                text_embed_teacher = None
+            output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp(),
+                                            image_embed_teacher=image_embed_teacher,
+                                            text_embed_teacher=text_embed_teacher,
+                                            hard_weight=hard_weight)
             
             self.image_encoder.masked_im_modeling = self.meta['use_masked_im_modeling']
             self.image_encoder.return_all_tokens = self.meta["return_all_tokens"]

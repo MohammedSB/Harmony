@@ -302,14 +302,18 @@ def train(args):
 
         # saving teacher vit separately
         main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict()
+        if model.is_contrastive:
+            main_text = model.text_encoder_teacher.state_dict() if model.use_soft_labels else model.text_encoder.state_dict()
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
         utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
+        utils.save_on_master(main_text, os.path.join(args.output_dir, 'main_text_checkpoint.pth'))
         if args.saveckp_freq and epoch % args.saveckp_freq == 0:
             utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
             utils.save_on_master(main_vit, os.path.join(args.output_dir, f'main_vit_checkpoint{epoch:04}.pth'))
+            utils.save_on_master(main_text, os.path.join(args.output_dir, f'main_text_checkpoint{epoch:04}.pth'))
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch}
         if utils.is_main_process():
@@ -335,7 +339,16 @@ def train_one_epoch(model, data_loader,
         for name_k, param_k in model.discriminative_path.teacher_without_ddp.named_parameters():
             names_k.append(name_k)
             params_k.append(param_k)
-            
+
+        if model.use_soft_labels:
+            names_tq, params_tq, names_tk, params_tk = [], [], [], []
+            for name_tq, param_tq in model.text_encoder.named_parameters():
+                names_tq.append(name_tq)
+                params_tq.append(param_tq)
+            for name_tk, param_tk in model.text_encoder_teacher.named_parameters():
+                names_tk.append(name_tk)
+                params_tk.append(param_tk)
+                
         if args.separate_gen_model:
             names_g_tmp, params_g_tmp = [], []
             for name_g, param_g in model.generative_path.named_parameters():
@@ -418,6 +431,10 @@ def train_one_epoch(model, data_loader,
                     else:
                         param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
                     param_index+=1
+                # if using soft labels, update text encoder teacher
+                if model.use_soft_labels:
+                    for param_tq, param_tk in zip(params_tq, params_tk):
+                        param_tk.data.mul_(m).add_((1 - m) * param_tq.detach().data)
 
         # logging
         torch.cuda.synchronize()
