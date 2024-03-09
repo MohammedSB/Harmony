@@ -15,39 +15,52 @@ import torch.utils.data
 import torchvision.transforms as transforms
 
 from Harmony.utils import DataAugmentation, get_dataset_from_string
-import Harmony.models.vision_transformer as vision_transformer
+import Harmony.models.vision_transformer as vits
+from Harmony.models.text_encoder import TextEncoder
 from Harmony.data.utils import SimpleTokenizer
-
+from Harmony.utils import dataset_classes
 
 def get_args_parser():
     parser = argparse.ArgumentParser(description='SLIP 0-shot evaluations', add_help=False)
     parser.add_argument('--output-dir', default='./', type=str, help='output dir')
-    parser.add_argument('--batch-size', default=256, type=int, help='batch_size')
+    parser.add_argument('--batch-size', default=32, type=int, help='batch_size')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers per process')
     parser.add_argument('--image_encoder', default='', type=str, help='path to latest checkpoint')
     parser.add_argument('--arch', default='vit_small')
+    parser.add_argument('--patch_size', default=16)
     parser.add_argument('--text_encoder', default='', type=str, help='path to latest checkpoint')
     return parser
 
 
 def main(args):
-    # create model
-    image_state_dict = args.image_encoder
-    model.cuda()
-    model.load_state_dict(image_state_dict, strict=True)
-    print("=> loaded resume checkpoint '{}'".format(args.resume))
+    # create model(s)
+    image_encoder = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+    image_encoder.cuda()
+    image_state_dict = torch.load(args.image_encoder)
+    image_state_dict = {k.replace("module.", ""): v for k, v in image_state_dict.items()}
+    image_encoder.load_state_dict(image_state_dict, strict=True)
+    print("=> loaded image checkpoint '{}'".format(args.image_encoder))
+
+    
+    text_encoder = TextEncoder(embed_dim=512)
+    text_encoder.cuda()
+    text_state_dict = torch.load(args.text_encoder)
+    text_state_dict = {k.replace("module.", ""): v for k, v in text_state_dict.items()}
+    text_encoder.load_state_dict(text_state_dict, strict=True)
+    print("=> loaded text checkpoint '{}'".format(args.text_encoder))
 
     cudnn.benchmark = True
 
     cwd = os.path.dirname(os.path.realpath(__file__))
-    with open(os.path.join(cwd, 'dataset_catalog.json')) as f:
+    meta_dir = f"{os.sep}".join(cwd.split(f"{os.sep}")[:-1]) + f"{os.sep}data{os.sep}meta"
+    with open(os.path.join(meta_dir, 'dataset_catalog.json')) as f:
         catalog = json.load(f)
 
-    with open(os.path.join(cwd, 'templates.json')) as f:
+    with open(os.path.join(meta_dir, 'templates.json')) as f:
         all_templates = json.load(f)
 
-    with open(os.path.join(cwd, 'labels.json')) as f:
+    with open(os.path.join(meta_dir, 'labels.json')) as f:
         all_labels = json.load(f)
 
     # Data loading code
@@ -64,10 +77,13 @@ def main(args):
 
     results = []
     for d in catalog:
+        if d.upper() not in dataset_classes:
+            continue
         print('Evaluating {}'.format(d))
         # val_dataset = datasets.get_downstream_dataset(catalog, name=d, is_train=False, transform=val_transform)
-        data_root = args.data.split(":")[1]
-        data = get_dataset_from_string(args.data)
+        data_root = catalog[d]['path']
+        # data_root = args.data.split(":")[1]
+        data = get_dataset_from_string(d + ":" + d)
         val_dataset = data(data_root, transform=val_transform)
 
         val_loader = torch.utils.data.DataLoader(
@@ -79,7 +95,7 @@ def main(args):
 
         is_acc = d not in ['aircraft', 'pets', 'caltech101', 'flowers', 'kinetics700_frames', 'hateful_memes']
 
-        acc_or_outputs = validate_zeroshot(val_loader, templates, labels, model, tokenizer, is_acc)
+        acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc)
 
         if d in ['aircraft', 'pets', 'caltech101', 'flowers']:
             metric = mean_per_class(*acc_or_outputs)
@@ -100,9 +116,10 @@ def main(args):
     for x in results:
         print('{:.1f}'.format(x))
 
-def validate_zeroshot(val_loader, templates, labels, model, tokenizer, is_acc):
+def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc):
     # switch to evaluate mode
-    model.eval()
+    image_encoder.eval()
+    text_encoder.eval()
     total_top1 = 0
     total_images = 0
 
@@ -119,7 +136,7 @@ def validate_zeroshot(val_loader, templates, labels, model, tokenizer, is_acc):
                 texts = [t.format(label) for t in templates]
             texts = tokenizer(texts).cuda(non_blocking=True)
             texts = texts.view(-1, 77).contiguous()
-            class_embeddings = utils.get_model(model).encode_text(texts)
+            class_embeddings = text_encoder(texts)
             class_embeddings = class_embeddings / class_embeddings.norm(dim=-1, keepdim=True)
             class_embeddings = class_embeddings.mean(dim=0)
             class_embeddings = class_embeddings / class_embeddings.norm(dim=-1, keepdim=True)
@@ -131,7 +148,7 @@ def validate_zeroshot(val_loader, templates, labels, model, tokenizer, is_acc):
             target = target.cuda(non_blocking=True)
 
             # encode images
-            image_features = utils.get_model(model).encode_image(images)
+            image_features = image_encoder(images, contrastive=True)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
             # cosine similarity as logits

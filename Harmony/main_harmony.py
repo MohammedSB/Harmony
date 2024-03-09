@@ -303,7 +303,7 @@ def train(args):
         # saving teacher vit separately
         main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict()
         if model.is_contrastive:
-            main_text = model.text_encoder_teacher.state_dict() if model.use_soft_labels else model.text_encoder.state_dict()
+            main_text = model.text_encoder_teacher.module.state_dict() if model.use_soft_labels else model.text_encoder.module.state_dict()
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
