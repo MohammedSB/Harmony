@@ -92,6 +92,7 @@ class Harmony(torch.nn.Module):
             self.use_soft_labels = np.any(self.hard_labels_weight_scheduler < 1.0) 
             if self.use_soft_labels:
                 print("Using soft labels!")
+                self.image_projection_teacher = nn.Parameter(torch.empty(self.vision_width, text_embed_dim)).cuda()
                 self.text_encoder_teacher = TextEncoder(embed_dim=text_embed_dim)
                 self.text_encoder_teacher  = nn.parallel.DistributedDataParallel(self.text_encoder_teacher, device_ids=[self.meta['gpu']])
                 for param in self.text_encoder_teacher.parameters():
@@ -123,7 +124,7 @@ class Harmony(torch.nn.Module):
                 self.discriminative_path.teacher.backbone.return_all_tokens = False
                 
                 image_embed_teacher = self.discriminative_path.teacher.backbone(images[1]) 
-                image_embed_teacher = image_embed_teacher @ self.image_projection
+                image_embed_teacher = image_embed_teacher @ self.image_projection_teacher
                 text_embed_teacher =  self.text_encoder_teacher(captions)
 
                 self.discriminative_path.teacher.backbone.return_all_tokens = self.meta["return_all_tokens"]
