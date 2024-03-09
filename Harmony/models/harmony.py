@@ -20,9 +20,6 @@ class Harmony(torch.nn.Module):
         if meta_training_data != None:
             self.meta = {**self.meta, **meta_training_data}
         self.objective = args.objective
-
-        # initialize text encoder properties (vit-b)
-        self.vision_width = get_embedding_size_from_arch(self.meta['arch'])
         
         # define the model arch (i.e. dino, ibot, dino+mae, ibot+mae, harmony)
         self.define_arch() 
@@ -84,15 +81,12 @@ class Harmony(torch.nn.Module):
             text_embed_dim = 512
             self.text_encoder = TextEncoder(embed_dim=text_embed_dim)
             self.text_encoder = nn.parallel.DistributedDataParallel(self.text_encoder, device_ids=[self.meta['gpu']])
-            self.image_projection = nn.Parameter(torch.empty(self.vision_width, text_embed_dim)).cuda()
             self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07)).cuda()
-            nn.init.normal_(self.image_projection, std=self.vision_width ** -0.5)
 
             # check if to whether to use labels 
             self.use_soft_labels = np.any(self.hard_labels_weight_scheduler < 1.0) 
             if self.use_soft_labels:
                 print("Using soft labels!")
-                self.image_projection_teacher = nn.Parameter(torch.empty(self.vision_width, text_embed_dim)).cuda()
                 self.text_encoder_teacher = TextEncoder(embed_dim=text_embed_dim)
                 self.text_encoder_teacher  = nn.parallel.DistributedDataParallel(self.text_encoder_teacher, device_ids=[self.meta['gpu']])
                 for param in self.text_encoder_teacher.parameters():
@@ -115,16 +109,14 @@ class Harmony(torch.nn.Module):
             self.image_encoder.return_all_tokens = False
 
             text_embed = self.text_encoder(captions)
-            image_embed = self.image_encoder(images[1]) # input simply augmeneted image
-            image_embed = image_embed @ self.image_projection
+            image_embed = self.image_encoder(images[1], contrastive=True) # input simply augmeneted image
             hard_weight = self.hard_labels_weight_scheduler[iteration]
 
             if self.use_soft_labels and self.is_discriminative:
                 # TODO: do this in a better way
                 self.discriminative_path.teacher.backbone.return_all_tokens = False
                 
-                image_embed_teacher = self.discriminative_path.teacher.backbone(images[1]) 
-                image_embed_teacher = image_embed_teacher @ self.image_projection_teacher
+                image_embed_teacher = self.discriminative_path.teacher.backbone(images[1], contrastive=True) 
                 text_embed_teacher =  self.text_encoder_teacher(captions)
 
                 self.discriminative_path.teacher.backbone.return_all_tokens = self.meta["return_all_tokens"]
