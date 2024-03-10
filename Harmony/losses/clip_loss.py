@@ -23,7 +23,7 @@ class CLIPLoss(nn.Module):
         image_embed = F.normalize(image_embed, dim=-1, p=2)
         text_embed = F.normalize(text_embed, dim=-1, p=2)
 
-        # gather features from all GPUs
+        # # gather features from all GPUs
         image_embed_all, text_embed_all = \
             utils.all_gather_batch([image_embed, text_embed])
         
@@ -54,10 +54,4 @@ class CLIPLoss(nn.Module):
 
             loss = loss + (soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )) # add scaled soft loss
 
-        # compute accuracy
-        with torch.no_grad():
-            pred = torch.argmax(logits_per_image, dim=-1)
-            correct = pred.eq(self.labels).sum()
-            acc = 100 * correct / local_batch_size
-
-        return {'loss': loss, 'clip_loss': loss, 'clip_acc': acc}
+        return {'clip_loss': loss}

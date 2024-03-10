@@ -236,6 +236,7 @@ def train(args):
     }
 
     model = Harmony(args=args, meta_training_data=meta_training_data)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -275,7 +276,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        disc_loss=model.discriminative_path.loss if model.is_discriminative else None,
+        disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None,
     )
     start_epoch = to_restore["epoch"]
 
@@ -297,13 +298,14 @@ def train(args):
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'disc_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
+            'disc_loss': model.module.discriminative_path.loss.state_dict() if model.module.is_discriminative else None,
         }
 
         # saving teacher vit separately
-        main_vit = model.discriminative_path.teacher.backbone.state_dict() if model.is_discriminative else model.image_encoder.state_dict()
-        if model.is_contrastive:
-            main_text = model.text_encoder_teacher.module.state_dict() if model.use_soft_labels else model.text_encoder.module.state_dict()
+        main_vit = model.module.discriminative_path.teacher.backbone.state_dict() if model.module.is_discriminative else model.module.image_encoder.state_dict()
+        if model.module.is_contrastive:
+            main_text = model.module.contrastive_path.text_backbone_teacher.state_dict() \
+                  if model.module.contrastive_path.use_soft_labels else model.module.contrastive_path.text_backbone.state_dict()
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
@@ -331,27 +333,27 @@ def train_one_epoch(model, data_loader,
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
 
     # common params
-    if model.is_discriminative:
+    if model.module.is_discriminative:
         names_q, params_q, names_k, params_k = [], [], [], []
-        for name_q, param_q in model.discriminative_path.student.module.named_parameters():
+        for name_q, param_q in model.module.discriminative_path.student.named_parameters():
             names_q.append(name_q)
             params_q.append(param_q)
-        for name_k, param_k in model.discriminative_path.teacher_without_ddp.named_parameters():
+        for name_k, param_k in model.module.discriminative_path.teacher.named_parameters():
             names_k.append(name_k)
             params_k.append(param_k)
 
-        if model.use_soft_labels:
+        if model.module.contrastive_path.use_soft_labels:
             names_tq, params_tq, names_tk, params_tk = [], [], [], []
-            for name_tq, param_tq in model.text_encoder.named_parameters():
+            for name_tq, param_tq in model.module.contrastive_path.text_backbone.named_parameters():
                 names_tq.append(name_tq)
                 params_tq.append(param_tq)
-            for name_tk, param_tk in model.text_encoder_teacher.named_parameters():
+            for name_tk, param_tk in model.module.contrastive_path.text_backbone_teacher.named_parameters():
                 names_tk.append(name_tk)
                 params_tk.append(param_tk)
                 
         if args.separate_gen_model:
             names_g_tmp, params_g_tmp = [], []
-            for name_g, param_g in model.generative_path.named_parameters():
+            for name_g, param_g in model.module.generative_path.named_parameters():
                 names_g_tmp.append(name_g)
                 params_g_tmp.append(param_g)
             names_common_gen = list(set(names_q) & set(names_g_tmp))
@@ -398,13 +400,13 @@ def train_one_epoch(model, data_loader,
         # student update
         optimizer.zero_grad()
         param_norms = None
-        student = model.discriminative_path.student if model.is_discriminative else model.image_encoder
+        student = model.module.discriminative_path.student if model.module.is_discriminative else model.module.image_encoder
         if fp16_scaler is None:
             loss.backward()
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad)
-            if model.is_discriminative:
-                utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
+            if model.module.is_discriminative:
+                utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
             optimizer.step()
         else:
@@ -412,14 +414,14 @@ def train_one_epoch(model, data_loader,
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
-            if model.is_discriminative:
-                utils.cancel_gradients_last_layer(epoch, model.discriminative_path.student,
+            if model.module.is_discriminative:
+                utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
             fp16_scaler.step(optimizer)
             fp16_scaler.update()
 
         # EMA update for the teacher
-        if model.is_discriminative:
+        if model.module.is_discriminative:
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter
                 param_index = 0
@@ -432,7 +434,7 @@ def train_one_epoch(model, data_loader,
                         param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
                     param_index+=1
                 # if using soft labels, update text encoder teacher
-                if model.use_soft_labels:
+                if model.module.contrastive_path.use_soft_labels:
                     for param_tq, param_tk in zip(params_tq, params_tk):
                         param_tk.data.mul_(m).add_((1 - m) * param_tq.detach().data)
 
@@ -444,10 +446,10 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(clip_loss=clip_loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
-        if model.is_contrastive:
-            metric_logger.update(clip_hard_weight=model.hard_labels_weight_scheduler[iteration])
-        if model.is_generative:
-            metric_logger.update(mask_ratio=round(model.mask_ratio_scheduler[iteration], 2))
+        if model.module.is_contrastive:
+            metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[iteration])
+        if model.module.is_generative:
+            metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[iteration], 2))
         # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
 
         meta_training_data['current_iteration'] += 1

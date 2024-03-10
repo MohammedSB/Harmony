@@ -60,15 +60,8 @@ class DiscriminativePath(nn.Module):
             self.student = nn.SyncBatchNorm.convert_sync_batchnorm(self.student)
             self.teacher = nn.SyncBatchNorm.convert_sync_batchnorm(self.teacher)
 
-            # we need DDP wrapper to have synchro batch norms working...
-            self.teacher = nn.parallel.DistributedDataParallel(self.teacher, device_ids=[self.meta['gpu']])
-            self.teacher_without_ddp = self.teacher.module
-        else:
-            # teacher_without_ddp and self.teacher are the same thing
-            self.teacher_without_ddp = self.teacher
-        self.student = nn.parallel.DistributedDataParallel(self.student, device_ids=[self.meta['gpu']])
         # self.teacher and self.student start with the same weights
-        self.teacher_without_ddp.load_state_dict(self.student.module.state_dict(), strict=False)
+        self.teacher.load_state_dict(self.student.state_dict(), strict=False)
         # there is no backpropagation through the self.teacher, so no need for gradients
         for p in self.teacher.parameters():
             p.requires_grad = False
@@ -115,9 +108,9 @@ class DiscriminativePath(nn.Module):
             backbone_feat, student_output = self.student(images[:self.meta['global_crops_number']], mask=masks[:self.meta['global_crops_number']], return_backbone_feat=True)
 
             # get local views
-            self.student.module.backbone.masked_im_modeling = False
+            self.student.backbone.masked_im_modeling = False
             student_local_cls = self.student(images[self.meta['global_crops_number']:])[0] if len(images) > self.meta['global_crops_number'] else None
-            self.student.module.backbone.masked_im_modeling = self.meta['use_masked_im_modeling']
+            self.student.backbone.masked_im_modeling = self.meta['use_masked_im_modeling']
 
             all_loss = self.loss(student_output, teacher_output, student_local_cls, masks, epoch)
 
