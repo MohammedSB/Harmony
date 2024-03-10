@@ -20,8 +20,8 @@ class ImageNet(torch.utils.data.Dataset):
             self.image_paths = [os.path.join(self.root, image) for image in self.images]
             self.labels = pd.read_csv(f"{os.sep}".join(os.path.realpath(__file__).split(f"{os.sep}")[:-1]) + "/meta/imagenet_val_labels.csv")
 
-            # self.image_paths = self.image_paths[:100]
-            # self.images = self.images[:100]
+            self.image_paths = self.image_paths[:5]
+            self.images = self.images[:5]
 
     def __len__(self):
         if self.split == "train":

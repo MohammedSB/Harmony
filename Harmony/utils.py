@@ -957,8 +957,7 @@ def multi_scale(samples, model):
 
 def get_dataset_from_string(string):
     keys = string.split(":")
-    data = keys[0]
-
+    data = keys[0].upper()
     try:
         if data in dataset_classes.keys():
             return dataset_classes[data]

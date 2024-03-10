@@ -22,8 +22,8 @@ from Harmony.utils import dataset_classes
 
 def get_args_parser():
     parser = argparse.ArgumentParser(description='SLIP 0-shot evaluations', add_help=False)
-    parser.add_argument('--output-dir', default='./', type=str, help='output dir')
-    parser.add_argument('--batch-size', default=32, type=int, help='batch_size')
+    parser.add_argument('--output_dir', default='./', type=str, help='output dir')
+    parser.add_argument('--batch_size', default=2, type=int, help='batch_size')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers per process')
     parser.add_argument('--image_encoder', default='', type=str, help='path to latest checkpoint')
@@ -75,7 +75,7 @@ def main(args):
                                  std=[0.229, 0.224, 0.225])
         ])
 
-    results = []
+    results = {}
     for d in catalog:
         if d.upper() not in dataset_classes:
             continue
@@ -84,7 +84,7 @@ def main(args):
         data_root = catalog[d]['path']
         # data_root = args.data.split(":")[1]
         data = get_dataset_from_string(d + ":" + d)
-        val_dataset = data(data_root, transform=val_transform)
+        val_dataset = data(data_root + f"{os.sep}val", transform=val_transform, split="val")
 
         val_loader = torch.utils.data.DataLoader(
             val_dataset, batch_size=args.batch_size, shuffle=False,
@@ -108,13 +108,16 @@ def main(args):
         else:
             metric = acc_or_outputs
 
-        results.append(metric)
+        results[d] = metric
 
         print('metric:', metric)
 
     print('all results:')
-    for x in results:
-        print('{:.1f}'.format(x))
+    for k, v in results.items():
+        print(f'{k}: {v:.1f}')
+
+    with open(args.output_dir + os.sep + "results.json", "w") as out: 
+        json.dump(results, out)
 
 def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc):
     # switch to evaluate mode
@@ -126,9 +129,9 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
     all_outputs = []
     all_targets = []
 
-    print('=> encoding captions')
     with torch.no_grad():
         text_features = []
+        print('=> encoding templates')
         for label in labels:
             if isinstance(label, list):
                 texts = [t.format(l) for t in templates for l in label]
@@ -143,6 +146,7 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
             text_features.append(class_embeddings)
         text_features = torch.stack(text_features, dim=0)
 
+        print("=> encoding data")
         for images, target in val_loader:
             images = images.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
