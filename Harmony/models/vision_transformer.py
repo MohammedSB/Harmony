@@ -177,7 +177,7 @@ class VisionTransformer(nn.Module):
         self.apply(self._init_weights)
 
         # contrastive projection for clip
-        self.contrastive_projection = nn.Parameter(torch.empty(embed_dim, contrastive_text_embed_dim)).cuda()
+        self.contrastive_projection = nn.Parameter(torch.empty(embed_dim, contrastive_text_embed_dim))
 
         # masked image modeling
         self.masked_im_modeling = masked_im_modeling

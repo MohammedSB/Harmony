@@ -18,12 +18,12 @@ class TextEncoder(torch.nn.Module):
             layers=self.transformer_layers,
             heads=self.transformer_heads,
             attn_mask=self.build_attention_mask(),
-        ).cuda()
+        )
 
-        self.text_embedding = torch.nn.Embedding(self.vocab_size, self.transformer_width).cuda()
-        self.text_positional_embedding = torch.nn.Parameter(torch.empty(self.context_length, self.transformer_width)).cuda()
-        self.text_norm = LayerNorm(self.transformer_width).cuda()
-        self.text_projection = torch.nn.Parameter(torch.empty(self.transformer_width, self.embed_dim)).cuda()
+        self.text_embedding = torch.nn.Embedding(self.vocab_size, self.transformer_width)
+        self.text_positional_embedding = torch.nn.Parameter(torch.empty(self.context_length, self.transformer_width))
+        self.text_norm = LayerNorm(self.transformer_width)
+        self.text_projection = torch.nn.Parameter(torch.empty(self.transformer_width, self.embed_dim), requires_grad=True)
 
         self.init()
 

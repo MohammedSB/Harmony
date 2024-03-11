@@ -375,7 +375,6 @@ def train_one_epoch(model, data_loader,
             images, captions = data
             masks = None
         
-        
         # move images to gpu
         images = [im.cuda(non_blocking=True) for im in images]
         captions = captions.cuda()

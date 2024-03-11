@@ -19,7 +19,7 @@ class ContrastivePath(nn.Module):
         # define the text encoder and peripherals
         text_embed_dim = 512
         self.text_backbone = TextEncoder(embed_dim=text_embed_dim)
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07)).cuda()
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
         # check if to whether to use labels 
         if self.use_soft_labels:
