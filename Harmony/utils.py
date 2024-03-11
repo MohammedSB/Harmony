@@ -724,9 +724,7 @@ def get_params_groups(model):
     not_regularized = []
     for name, param in model.named_parameters():
         if not param.requires_grad:
-            print("not!!!: ", name)
             continue
-        print(name)
         # we do not regularize biases nor Norm parameters
         if name.endswith(".bias") or len(param.shape) == 1:
             not_regularized.append(param)

@@ -52,9 +52,6 @@ class DiscriminativePath(nn.Module):
         self.student = utils.MultiCropWrapper(self.image_encoder, self.student_head)
         self.teacher = utils.MultiCropWrapper(self.teacher, self.teacher_head)
 
-        # move networks to gpu
-        self.student, self.teacher = self.student.cuda(), self.teacher.cuda()
-
         # synchronize batch norms (if any)
         if utils.has_batchnorms(self.student):
             self.student = nn.SyncBatchNorm.convert_sync_batchnorm(self.student)
@@ -76,7 +73,7 @@ class DiscriminativePath(nn.Module):
                 self.meta['teacher_temp'],
                 self.meta['warmup_teacher_temp_epochs'],
                 self.meta['epochs'],
-            ).cuda()
+            )
         elif "ibot" in self.meta['objective']:
             same_dim = self.meta['shared_head'] or self.meta['shared_head_teacher']
             self.loss = iBOTLoss(
@@ -93,7 +90,7 @@ class DiscriminativePath(nn.Module):
                 lambda1=self.meta['lambda1'],
                 lambda2=self.meta['lambda2'],
                 mim_start_epoch=self.meta['pred_start_epoch'],
-            ).cuda()
+            )
 
     def forward(self, images, epoch, masks):
         

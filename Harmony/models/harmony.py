@@ -65,17 +65,17 @@ class Harmony(torch.nn.Module):
         self.is_contrastive = False 
 
         if "dino" in self.objective or "ibot" in self.objective:
-            self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta).to(self.meta['gpu'])
+            self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta)
             self.is_discriminative = True
         else:
             self.use_soft_labels = None
 
         if "mae" in self.objective:
-            self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta).to(self.meta['gpu'])
+            self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta)
             self.is_generative = True
 
         if "clip" in self.objective:
-            self.contrastive_path = ContrastivePath(image_backbone=self.image_encoder, meta=self.meta, use_soft_labels=self.use_soft_labels).to(self.meta['gpu'])
+            self.contrastive_path = ContrastivePath(image_backbone=self.image_encoder, meta=self.meta, use_soft_labels=self.use_soft_labels)
             self.is_contrastive = True
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
