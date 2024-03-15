@@ -42,13 +42,10 @@ class CLIPLoss(nn.Module):
             image_embed_teacher = F.normalize(image_embed_teacher, dim=-1, p=2)
             text_embed_teacher = F.normalize(text_embed_teacher, dim=-1, p=2)
 
-            image_embed_teacher_all, text_embed_teacher_all = utils.all_gather_batch([image_embed_teacher, text_embed_teacher])
+            image_embed_teacher_all, text_embed_teacher_all = utils.all_gather_batch_with_grad([image_embed_teacher, text_embed_teacher])
 
-            logits_per_image_teacher =  (image_embed_teacher @ text_embed_teacher_all.t())/temp
-            logits_per_text_teacher = (text_embed_teacher @ image_embed_teacher_all.t())/temp 
-
-            # print(logits_per_image_teacher)
-            # print(logits_per_text_teacher)
+            logits_per_image_teacher =  F.softmax((image_embed_teacher @ text_embed_teacher_all.t())/temp, dim=1)
+            logits_per_text_teacher =  F.softmax((text_embed_teacher @ image_embed_teacher_all.t())/temp, dim=1)
 
             image_loss_teacher = F.cross_entropy(logits_per_image, logits_per_image_teacher) 
             text_loss_teacher = F.cross_entropy(logits_per_text, logits_per_text_teacher) 
@@ -57,7 +54,7 @@ class CLIPLoss(nn.Module):
             soft_loss = soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )
             
             # print(soft_weight)
-            # print(soft_loss)
+            print(soft_loss)
 
             loss += soft_loss 
 
