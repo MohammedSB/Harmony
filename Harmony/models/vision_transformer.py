@@ -178,6 +178,7 @@ class VisionTransformer(nn.Module):
 
         # contrastive projection for clip
         self.contrastive_projection = nn.Parameter(torch.empty(embed_dim, contrastive_text_embed_dim))
+        nn.init.normal_(self.contrastive_projection, std=self.embed_dim ** -0.5)
 
         # masked image modeling
         self.masked_im_modeling = masked_im_modeling

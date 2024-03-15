@@ -25,7 +25,7 @@ class CLIPLoss(nn.Module):
 
         # # gather features from all GPUs
         image_embed_all, text_embed_all = \
-            utils.all_gather_batch([image_embed, text_embed])
+            utils.all_gather_batch_with_grad([image_embed, text_embed])
         
         # cosine similarity as logits
         logits_per_image = logit_scale * image_embed @ text_embed_all.t()
@@ -47,11 +47,18 @@ class CLIPLoss(nn.Module):
             logits_per_image_teacher =  (image_embed_teacher @ text_embed_teacher_all.t())/temp
             logits_per_text_teacher = (text_embed_teacher @ image_embed_teacher_all.t())/temp 
 
+            # print(logits_per_image_teacher)
+            # print(logits_per_text_teacher)
+
             image_loss_teacher = F.cross_entropy(logits_per_image, logits_per_image_teacher) 
             text_loss_teacher = F.cross_entropy(logits_per_text, logits_per_text_teacher) 
 
             soft_weight = 1.0 - hard_weight
+            soft_loss = soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )
+            
+            # print(soft_weight)
+            # print(soft_loss)
 
-            loss = loss + (soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )) # add scaled soft loss
+            loss += soft_loss 
 
         return {'clip_loss': loss}
