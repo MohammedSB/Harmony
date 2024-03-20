@@ -302,7 +302,12 @@ def train(args):
         }
 
         # saving teacher vit separately
-        main_vit = model.module.discriminative_path.teacher.backbone.state_dict() if model.module.is_discriminative else model.module.image_encoder.state_dict()
+        if model.module.is_discriminative:
+            main_vit = model.module.discriminative_path.teacher.backbone.state_dict()
+        elif model.module.use_soft_labels:
+            main_vit = model.module.teacher.state_dict()
+        else:
+            main_vit = model.module.image_encoder.state_dict()
         if model.module.is_contrastive:
             main_text = model.module.contrastive_path.text_backbone_teacher.state_dict() \
                   if model.module.contrastive_path.use_soft_labels else model.module.contrastive_path.text_backbone.state_dict()
@@ -342,15 +347,24 @@ def train_one_epoch(model, data_loader,
             names_k.append(name_k)
             params_k.append(param_k)
 
-        if model.module.contrastive_path.use_soft_labels:
-            names_tq, params_tq, names_tk, params_tk = [], [], [], []
-            for name_tq, param_tq in model.module.contrastive_path.text_backbone.named_parameters():
-                names_tq.append(name_tq)
-                params_tq.append(param_tq)
-            for name_tk, param_tk in model.module.contrastive_path.text_backbone_teacher.named_parameters():
-                names_tk.append(name_tk)
-                params_tk.append(param_tk)
+    if model.module.contrastive_path.use_soft_labels:
+        names_tq, params_tq, names_tk, params_tk = [], [], [], []
+        for name_tq, param_tq in model.module.contrastive_path.text_backbone.named_parameters():
+            names_tq.append(name_tq)
+            params_tq.append(param_tq)
+        for name_tk, param_tk in model.module.contrastive_path.text_backbone_teacher.named_parameters():
+            names_tk.append(name_tk)
+            params_tk.append(param_tk)
                 
+        if not model.module.is_discriminative:
+            names_q, params_q, names_k, params_k = [], [], [], []
+            for name_q, param_q in model.module.image_encoder.named_parameters():
+                names_q.append(name_q)
+                params_q.append(param_q)
+            for name_k, param_k in model.module.teacher.named_parameters():
+                names_k.append(name_k)
+                params_k.append(param_k)
+
         # if args.separate_gen_model:
         #     names_g_tmp, params_g_tmp = [], []
         #     for name_g, param_g in model.module.generative_path.named_parameters():
@@ -420,7 +434,7 @@ def train_one_epoch(model, data_loader,
             fp16_scaler.update()
 
         # EMA update for the teacher
-        if model.module.is_discriminative:
+        if model.module.is_discriminative or model.module.use_soft_labels:
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter
                 # param_index = 0

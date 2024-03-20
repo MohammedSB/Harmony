@@ -10,7 +10,7 @@ class CLIPLoss(nn.Module):
         self.labels = None
         self.last_local_batch_size = None
 
-    def forward(self, image_embed, text_embed, logit_scale, logit_scale_teacher=None, image_embed_teacher=None, text_embed_teacher=None, hard_weight=1.0, temp=0.1):
+    def forward(self, image_embed, text_embed, logit_scale, image_embed_teacher=None, text_embed_teacher=None, hard_weight=1.0, temp=0.1):
         local_batch_size = image_embed.size(0)
 
         if local_batch_size != self.last_local_batch_size:
@@ -51,17 +51,6 @@ class CLIPLoss(nn.Module):
 
             image_loss_teacher = F.cross_entropy(logits_per_image, targets_per_image_teacher) 
             text_loss_teacher = F.cross_entropy(logits_per_text, targets_per_text_teacher) 
-
-            image_loss_teacher_2 = -(logits_per_image.log_softmax(-1) * targets_per_image_teacher).sum(-1).mean()
-            text_loss_teacher_2 = -(logits_per_text.log_softmax(-1) * targets_per_text_teacher).sum(-1).mean()
-
-            print("ONE")
-            print(image_loss_teacher)
-            print(text_loss_teacher)
-
-            print("TWO")
-            print(image_loss_teacher_2)
-            print(text_loss_teacher_2)
 
             soft_weight = 1.0 - hard_weight
             soft_loss =  (image_loss_teacher + text_loss_teacher) / 2 

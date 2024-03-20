@@ -51,12 +51,14 @@ class Harmony(torch.nn.Module):
                 np.ones(self.meta['num_iterations_total'] -  (self.meta['mask_ratio_epochs'] * self.meta['num_iterations_per_epoch'])) * self.meta['mask_ratio_end']
             ))
 
-        self.hard_labels_weight_scheduler = utils.cosine_scheduler(
+        self.hard_labels_weight_scheduler = np.concatenate((utils.cosine_scheduler(
                 base_value=self.meta['hard_labels_weight'],
                 final_value=self.meta['hard_labels_weight_end'],
-                epochs=self.meta['epochs'],
+                epochs=self.meta['hard_labels_weight_epochs'],
                 niter_per_ep=self.meta['num_iterations_per_epoch']
-            )
+            ), np.ones(self.meta['num_iterations_total'] - (self.meta['hard_labels_weight_epochs'] * self.meta['num_iterations_per_epoch'])) * self.meta['hard_labels_weight_end']
+        ))
+
         self.use_soft_labels = np.any(self.hard_labels_weight_scheduler < 1.0) 
        
         # initialize the variables
@@ -67,8 +69,6 @@ class Harmony(torch.nn.Module):
         if "dino" in self.objective or "ibot" in self.objective:
             self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta)
             self.is_discriminative = True
-        else:
-            self.use_soft_labels = None
 
         if "mae" in self.objective:
             self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta)
@@ -77,6 +77,12 @@ class Harmony(torch.nn.Module):
         if "clip" in self.objective:
             self.contrastive_path = ContrastivePath(image_backbone=self.image_encoder, meta=self.meta, use_soft_labels=self.use_soft_labels)
             self.is_contrastive = True
+
+        if self.use_soft_labels and not self.is_discriminative:
+            self.teacher = vits.__dict__[self.meta['arch']](
+                patch_size=self.meta['patch_size'],
+                return_all_tokens=True if "ibot" in self.meta['objective'] else False,
+            )
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
@@ -87,7 +93,9 @@ class Harmony(torch.nn.Module):
         
         if self.is_contrastive:
             if self.use_soft_labels:
-                output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration], self.discriminative_path.teacher.backbone)
+                teacher = self.discriminative_path.teacher.backbone if self.is_discriminative else self.teacher
+                hard_weight = self.hard_labels_weight_scheduler[iteration] if self.is_discriminative else 0
+                output = self.contrastive_path(images, captions, hard_weight, teacher)
                 if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss']
             else:
                 output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration])
