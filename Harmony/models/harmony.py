@@ -88,6 +88,7 @@ class Harmony(torch.nn.Module):
         if self.is_contrastive:
             if self.use_soft_labels:
                 output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration], self.discriminative_path.teacher.backbone)
+                outputs['soft_loss'] = output['soft_loss']
             else:
                 output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration])
             outputs["clip_loss"] = output['clip_loss']

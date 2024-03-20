@@ -351,14 +351,14 @@ def train_one_epoch(model, data_loader,
                 names_tk.append(name_tk)
                 params_tk.append(param_tk)
                 
-        if args.separate_gen_model:
-            names_g_tmp, params_g_tmp = [], []
-            for name_g, param_g in model.module.generative_path.named_parameters():
-                names_g_tmp.append(name_g)
-                params_g_tmp.append(param_g)
-            names_common_gen = list(set(names_q) & set(names_g_tmp))
-            params_g = [param_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
-            names_g = [name_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
+        # if args.separate_gen_model:
+        #     names_g_tmp, params_g_tmp = [], []
+        #     for name_g, param_g in model.module.generative_path.named_parameters():
+        #         names_g_tmp.append(name_g)
+        #         params_g_tmp.append(param_g)
+        #     names_common_gen = list(set(names_q) & set(names_g_tmp))
+        #     params_g = [param_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
+        #     names_g = [name_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
 
         names_common = list(set(names_q) & set(names_k))
         params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
@@ -423,16 +423,17 @@ def train_one_epoch(model, data_loader,
         if model.module.is_discriminative:
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter
-                param_index = 0
+                # param_index = 0
                 for param_q, param_k in zip(params_q, params_k):
-                    if args.separate_gen_model and names_q[param_index] in names_common_gen:
-                        gen_param_index = names_g.index(names_q[param_index])
-                        param_g = params_g[gen_param_index]
-                        param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + param_g.detach().data) / 2 ) )
-                    else:
-                        param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-                    param_index+=1
-                # if using soft labels, update text encoder teacher
+                    # if args.separate_gen_model and names_q[param_index] in names_common_gen:
+                    #     gen_param_index = names_g.index(names_q[param_index])
+                    #     param_g = params_g[gen_param_index]
+                    #     param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + param_g.detach().data) / 2 ) )
+                    # else:
+                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+                    # param_index+=1
+
+                # If using soft labels, update text encoder teacher
                 if model.module.contrastive_path.use_soft_labels:
                     for param_tq, param_tk in zip(params_tq, params_tk):
                         param_tk.data.mul_(m).add_((1 - m) * param_tq.detach().data)
@@ -443,6 +444,8 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(discriminative_loss=disc_loss.item())
         metric_logger.update(generative_loss=gen_loss.item())
         metric_logger.update(clip_loss=clip_loss.item())
+        if model.module.use_soft_labels:
+            metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if model.module.is_contrastive:

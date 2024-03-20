@@ -23,7 +23,7 @@ class CLIPLoss(nn.Module):
         image_embed = F.normalize(image_embed, dim=-1, p=2)
         text_embed = F.normalize(text_embed, dim=-1, p=2)
 
-        # # gather features from all GPUs
+        # gather features from all GPUs
         image_embed_all, text_embed_all = \
             utils.all_gather_batch_with_grad([image_embed, text_embed])
         
@@ -44,18 +44,26 @@ class CLIPLoss(nn.Module):
 
             image_embed_teacher_all, text_embed_teacher_all = utils.all_gather_batch_with_grad([image_embed_teacher, text_embed_teacher])
 
-            logits_per_image_teacher =  F.softmax((image_embed_teacher @ text_embed_teacher_all.t())/temp, dim=1)
-            logits_per_text_teacher =  F.softmax((text_embed_teacher @ image_embed_teacher_all.t())/temp, dim=1)
+            targets_per_image_teacher =  F.softmax((image_embed_teacher @ text_embed_teacher_all.t())/temp, dim=1)
+            targets_per_text_teacher =  F.softmax((text_embed_teacher @ image_embed_teacher_all.t())/temp, dim=1)
 
-            image_loss_teacher = F.cross_entropy(logits_per_image, logits_per_image_teacher) 
-            text_loss_teacher = F.cross_entropy(logits_per_text, logits_per_text_teacher) 
+            image_loss_teacher = F.cross_entropy(logits_per_image, targets_per_image_teacher) 
+            text_loss_teacher = F.cross_entropy(logits_per_text, targets_per_text_teacher) 
+
+            image_loss_teacher_2 = -(logits_per_image.log_softmax(-1) * targets_per_image_teacher).sum(-1).mean()
+            text_loss_teacher_2 = -(logits_per_text.log_softmax(-1) * targets_per_text_teacher).sum(-1).mean()
+
+            print("ONE")
+            print(image_loss_teacher)
+            print(text_loss_teacher)
+
+            print("TWO")
+            print(image_loss_teacher_2)
+            print(text_loss_teacher_2)
 
             soft_weight = 1.0 - hard_weight
-            soft_loss = soft_weight * ((image_loss_teacher + text_loss_teacher) / 2 )
-            
-            # print(soft_weight)
-            print(soft_loss)
+            soft_loss =  (image_loss_teacher + text_loss_teacher) / 2 
+            soft_loss_scaled = soft_weight * soft_loss
+            loss += soft_loss_scaled
 
-            loss += soft_loss 
-
-        return {'clip_loss': loss}
+        return {'clip_loss': loss, 'soft_loss': soft_loss}
