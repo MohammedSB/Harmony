@@ -444,7 +444,7 @@ def train_one_epoch(model, data_loader,
         metric_logger.update(discriminative_loss=disc_loss.item())
         metric_logger.update(generative_loss=gen_loss.item())
         metric_logger.update(clip_loss=clip_loss.item())
-        if model.module.use_soft_labels:
+        if 'soft_loss' in model_output.keys():
             metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
