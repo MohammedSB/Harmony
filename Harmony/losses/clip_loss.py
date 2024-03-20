@@ -36,6 +36,8 @@ class CLIPLoss(nn.Module):
 
         loss = hard_weight * ((image_loss + text_loss) / 2)
 
+        return_dict = {}
+
         if hard_weight != 1.0 and image_embed_teacher != None:
 
             # normalized features
@@ -65,5 +67,6 @@ class CLIPLoss(nn.Module):
             soft_loss =  (image_loss_teacher + text_loss_teacher) / 2 
             soft_loss_scaled = soft_weight * soft_loss
             loss += soft_loss_scaled
-
-        return {'clip_loss': loss, 'soft_loss': soft_loss}
+            return_dict['soft_loss'] = soft_loss
+        return_dict['clip_loss'] = loss 
+        return return_dict
