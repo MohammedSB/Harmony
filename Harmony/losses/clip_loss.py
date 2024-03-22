@@ -57,5 +57,6 @@ class CLIPLoss(nn.Module):
             soft_loss_scaled = soft_weight * soft_loss
             loss += soft_loss_scaled
             return_dict['soft_loss'] = soft_loss
+
         return_dict['clip_loss'] = loss 
         return return_dict

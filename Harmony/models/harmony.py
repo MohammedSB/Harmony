@@ -115,7 +115,7 @@ class Harmony(torch.nn.Module):
             
             outputs["pred"] = output["output"]
             outputs["mask"] = output["mask"]
-            outputs["gen_loss"] = output["loss"] * self.meta["gen_weight"] 
+            outputs["gen_loss"] = output["loss"] * self.meta["gen_weight"]
             outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
 
         return outputs
