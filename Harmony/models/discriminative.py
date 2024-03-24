@@ -19,6 +19,7 @@ class DiscriminativePath(nn.Module):
         self.teacher = vits.__dict__[self.meta['arch']](
             patch_size=self.meta['patch_size'],
             return_all_tokens=True if "ibot" in self.meta['objective'] else False,
+            can_be_contrastive=True,
             )
 
         # multi-crop wrapper handles forward with inputs of different resolutions

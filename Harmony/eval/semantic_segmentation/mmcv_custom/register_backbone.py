@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from mmcv_custom import load_checkpoint
 from mmseg.utils import get_root_logger
 from mmseg.models.builder import BACKBONES
-from models import VisionTransformer
+from Harmony.models.vision_transformer import VisionTransformer
 
 @BACKBONES.register_module()
 class VisionTransformer(VisionTransformer):

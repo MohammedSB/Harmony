@@ -31,7 +31,8 @@ class Harmony(torch.nn.Module):
                 patch_size=self.meta['patch_size'],
                 drop_path_rate=self.meta['drop_path_rate'],
                 return_all_tokens=self.meta["return_all_tokens"],
-                masked_im_modeling=self.meta['use_masked_im_modeling']
+                masked_im_modeling=self.meta['use_masked_im_modeling'],
+                can_be_contrastive=True,
             ).cuda()
             if self.meta['separate_gen_model']:
                 print("Building separate network for generative path.")
@@ -82,6 +83,7 @@ class Harmony(torch.nn.Module):
             self.teacher = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
                 return_all_tokens=True if "ibot" in self.meta['objective'] else False,
+                can_be_contrastive=True,
             )
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):

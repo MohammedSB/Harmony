@@ -146,7 +146,8 @@ class VisionTransformer(nn.Module):
     def __init__(self, img_size=[224], patch_size=16, in_chans=3, num_classes=0, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
                  drop_path_rate=0., norm_layer=partial(nn.LayerNorm, eps=1e-6), return_all_tokens=False, 
-                 init_values=0, use_mean_pooling=False, masked_im_modeling=False, contrastive_text_embed_dim=512):
+                 init_values=0, use_mean_pooling=False, masked_im_modeling=False, contrastive_text_embed_dim=512, 
+                 can_be_contrastive=False):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
         self.return_all_tokens = return_all_tokens
@@ -176,9 +177,10 @@ class VisionTransformer(nn.Module):
         trunc_normal_(self.cls_token, std=.02)
         self.apply(self._init_weights)
 
-        # contrastive projection for clip
-        self.contrastive_projection = nn.Parameter(torch.empty(embed_dim, contrastive_text_embed_dim))
-        nn.init.normal_(self.contrastive_projection, std=self.embed_dim ** -0.5)
+        if can_be_contrastive: # added this because unsued params issue in sseg code.
+            # contrastive projection for clip
+            self.contrastive_projection = nn.Parameter(torch.empty(embed_dim, contrastive_text_embed_dim))
+            nn.init.normal_(self.contrastive_projection, std=self.embed_dim ** -0.5)
 
         # masked image modeling
         self.masked_im_modeling = masked_im_modeling
