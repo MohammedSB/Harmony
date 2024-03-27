@@ -34,14 +34,15 @@ class ContrastivePath(nn.Module):
         self.image_backbone.masked_im_modeling = False
         self.image_backbone.return_all_tokens = False
 
+        indx = int(self.meta['contrastive_global_crops']) 
         text_embed = self.text_backbone(captions)
-        image_embed = self.image_backbone(images[1], contrastive=True) # input simply augmeneted image
+        image_embed = self.image_backbone(images[indx], contrastive=True) 
 
         if self.use_soft_labels and teacher:
             # TODO: do this in a better way
             teacher.return_all_tokens = False
             
-            image_embed_teacher = teacher(images[1], contrastive=True) 
+            image_embed_teacher = teacher(images[indx], contrastive=True) 
             text_embed_teacher =  self.text_backbone_teacher(captions)
 
             teacher.return_all_tokens = self.meta["return_all_tokens"]

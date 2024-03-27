@@ -7,6 +7,7 @@ from torchvision import models as torchvision_models
 import Harmony.utils as utils
 import Harmony.models.vision_transformer as vits
 from Harmony.models.transformer import Transformer, LayerNorm
+from Harmony.models.text_encoder import TextEncoder
 from .generative import GenerativePath
 from .discriminative import DiscriminativePath
 from .contrastive import ContrastivePath
@@ -79,6 +80,10 @@ class Harmony(torch.nn.Module):
             self.contrastive_path = ContrastivePath(image_backbone=self.image_encoder, meta=self.meta, use_soft_labels=self.use_soft_labels)
             self.is_contrastive = True
 
+            if self.meta['use_mlm']:
+                self.mlm_head = nn.Sequential(TextEncoder(transformer_layers=4), # small decoder following maskclip
+                                              nn.Linear(512, 49408, bias=False))
+
         if self.use_soft_labels and not self.is_discriminative:
             self.teacher = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
@@ -103,6 +108,10 @@ class Harmony(torch.nn.Module):
                 output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration])
             outputs["clip_loss"] = output['clip_loss']
             outputs["loss"] += output['clip_loss']
+
+            if self.meta['use_mlm']:
+                labels = captions
+                print("labels:", labels)
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
