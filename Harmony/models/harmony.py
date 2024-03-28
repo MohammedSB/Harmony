@@ -8,6 +8,7 @@ import Harmony.utils as utils
 import Harmony.models.vision_transformer as vits
 from Harmony.models.transformer import Transformer, LayerNorm
 from Harmony.models.text_encoder import TextEncoder
+from Harmony.models.text_decoder import TextDecoder
 from .generative import GenerativePath
 from .discriminative import DiscriminativePath
 from .contrastive import ContrastivePath
@@ -34,15 +35,15 @@ class Harmony(torch.nn.Module):
                 return_all_tokens=self.meta["return_all_tokens"],
                 masked_im_modeling=self.meta['use_masked_im_modeling'],
                 can_be_contrastive=True,
-            ).cuda()
-            if self.meta['separate_gen_model']:
-                print("Building separate network for generative path.")
-                self.gen_encoder = vits.__dict__[self.meta['arch']](
-                    patch_size=self.meta['patch_size'],
-                    drop_path_rate=self.meta['drop_path_rate'] if hasattr(self.meta, 'drop_path_rate') else 0,  # stochastic depth
-                )
-            else:
-                self.gen_encoder = self.image_encoder
+            )
+            # if self.meta['separate_gen_model']:
+            #     print("Building separate network for generative path.")
+            #     self.gen_encoder = vits.__dict__[self.meta['arch']](
+            #         patch_size=self.meta['patch_size'],
+            #         drop_path_rate=self.meta['drop_path_rate'] if hasattr(self.meta, 'drop_path_rate') else 0,  # stochastic depth
+            #     )
+            # else:
+            self.gen_encoder = self.image_encoder
         except:
             raise Exception(f"Unknow arch: {self.meta['arch']}")
         self.meta['embed_dim'] = self.image_encoder.embed_dim
@@ -81,8 +82,7 @@ class Harmony(torch.nn.Module):
             self.is_contrastive = True
 
             if self.meta['use_mlm']:
-                self.mlm_head = nn.Sequential(TextEncoder(transformer_layers=4), # small decoder following maskclip
-                                              nn.Linear(512, 49408, bias=False))
+                self.mlm_head = TextDecoder(transformer_layers=4)
 
         if self.use_soft_labels and not self.is_discriminative:
             self.teacher = vits.__dict__[self.meta['arch']](
@@ -110,8 +110,32 @@ class Harmony(torch.nn.Module):
             outputs["loss"] += output['clip_loss']
 
             if self.meta['use_mlm']:
-                labels = captions
-                print("labels:", labels)
+                labels = captions.clone()
+                masks = torch.ones_like(captions) * 0.20
+                masks = torch.bernoulli(masks)
+
+                # zero out all values past the eot.
+                argmax_indices = captions.argmax(dim=1)
+                range_tensor = torch.arange(captions.shape[1], device=captions.device).expand_as(captions)
+                condition_mask = range_tensor > argmax_indices.unsqueeze(1)
+                condition_mask[:, 0:1] = 1 # make all sot zero. 1 means add it for condition to remove. 
+                row_indices = torch.arange(condition_mask.size(0))
+                condition_mask[row_indices, argmax_indices] = 1 # make all eot zero.
+                masks[condition_mask] = 0 # make sot and eot zero.
+
+                # get masked input captions
+                masked_captions = captions.clone()
+                masked_captions[masks == 1] = 49408 # This is mask ID. TODO: do not hard code this
+                labels[masks == 0] = -100 # this is the default ignore value for pytorch ce
+
+                _, mlm_output = self.contrastive_path.text_backbone(masked_captions, return_without_proj=True)
+                mlm_output = self.mlm_head(mlm_output)
+                
+                probs = mlm_output.view(-1, mlm_output.size(-1)) 
+                labels = labels.view(-1)
+                loss = torch.nn.functional.cross_entropy(probs, labels)
+                
+                outputs["mlm_loss"] = loss
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image

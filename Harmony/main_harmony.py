@@ -240,6 +240,7 @@ def train(args):
 
     model = Harmony(args=args, meta_training_data=meta_training_data).to(args.gpu)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -469,6 +470,8 @@ def train_one_epoch(model, data_loader,
             metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[iteration])
         if model.module.is_generative:
             metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[iteration], 2))
+        if 'mlm_loss' in model_output.keys():
+            metric_logger.update(mlm_loss=model_output['mlm_loss'])
         # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
 
         meta_training_data['current_iteration'] += 1

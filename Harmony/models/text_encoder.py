@@ -50,16 +50,19 @@ class TextEncoder(torch.nn.Module):
 
         nn.init.normal_(self.text_projection, std=self.backbone.width ** -0.5)
 
-    def forward(self, text):
+    def forward(self, text, return_without_proj=False):
         x = self.text_embedding(text)  # [batch_size, n_ctx, d_model]
         x = x + self.text_positional_embedding
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.backbone(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.text_norm(x)
-
+        o = self.text_norm(x)
+        o = o[torch.arange(o.shape[0]), text.argmax(dim=-1)] 
+        
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
 
-        return x
+        o = o @ self.text_projection
+        if return_without_proj:
+            return o, x
+        return o

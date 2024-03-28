@@ -18,13 +18,15 @@ class ContrastivePath(nn.Module):
 
         # define the text encoder and peripherals
         text_embed_dim = 512
-        self.text_backbone = TextEncoder(embed_dim=text_embed_dim)
+        vocab_size = 49408
+        vocab_size = vocab_size + 1 if self.meta['use_mlm'] else vocab_size 
+        self.text_backbone = TextEncoder(embed_dim=text_embed_dim, vocab_size=vocab_size)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
         # check if to whether to use labels 
         if self.use_soft_labels:
             print("Using soft labels!")
-            self.text_backbone_teacher = TextEncoder(embed_dim=text_embed_dim)
+            self.text_backbone_teacher = TextEncoder(embed_dim=text_embed_dim, vocab_size=vocab_size)
             for param in self.text_backbone_teacher.parameters():
                 param.requires_grad = False
 
@@ -57,4 +59,4 @@ class ContrastivePath(nn.Module):
         self.image_backbone.masked_im_modeling = self.meta['use_masked_im_modeling']
         self.image_backbone.return_all_tokens = self.meta["return_all_tokens"]
 
-        return output
+        return output   
