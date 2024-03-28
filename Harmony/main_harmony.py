@@ -240,7 +240,6 @@ def train(args):
 
     model = Harmony(args=args, meta_training_data=meta_training_data).to(args.gpu)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
