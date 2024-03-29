@@ -31,7 +31,7 @@ from timm.data.constants import \
     IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from optim_factory import create_optimizer, get_parameter_groups, LayerDecayValueAssigner
 from scipy import interpolate
-from loader import ImageFolder
+from Harmony.eval.loader import ImageFolder
 from Harmony.eval.classification_layer_decay.engine_for_finetuning import train_one_epoch, evaluate
 from Harmony.eval.classification_layer_decay.utils import NativeScalerWithGradNormCount as NativeScaler
 from Harmony.data import ImageNet
