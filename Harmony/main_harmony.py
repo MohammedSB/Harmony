@@ -458,9 +458,9 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())
-        metric_logger.update(discriminative_loss=disc_loss.item())
-        metric_logger.update(generative_loss=gen_loss.item())
-        metric_logger.update(clip_loss=clip_loss.item())
+        metric_logger.update(discriminative_loss=disc_loss)
+        metric_logger.update(generative_loss=gen_loss)
+        metric_logger.update(clip_loss=clip_loss)
         if 'soft_loss' in model_output.keys():
             metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])

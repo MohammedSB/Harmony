@@ -93,20 +93,17 @@ class Harmony(torch.nn.Module):
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
-        outputs = {"loss": loss,
-                   "disc_loss": torch.zeros(1),
-                   "gen_loss": torch.zeros(1),
-                   "clip_loss": torch.zeros(1)}
+        outputs = {"loss": loss}
         
         if self.is_contrastive:
             if self.use_soft_labels:
                 teacher = self.discriminative_path.teacher.backbone if self.is_discriminative else self.teacher
                 hard_weight = self.hard_labels_weight_scheduler[iteration] if self.is_discriminative else 0
                 output = self.contrastive_path(images, captions, hard_weight, teacher)
-                if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss']
+                if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss'].item()
             else:
                 output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration])
-            outputs["clip_loss"] = output['clip_loss']
+            outputs["clip_loss"] = output['clip_loss'].item()
             outputs["loss"] += output['clip_loss']
 
             if self.meta['use_mlm']:
@@ -137,23 +134,19 @@ class Harmony(torch.nn.Module):
                 labels = labels.view(-1)
                 loss = torch.nn.functional.cross_entropy(probs, labels)
                 
-                outputs["mlm_loss"] = loss
-                outputs["loss"] += outputs["mlm_loss"]
+                outputs["mlm_loss"] = loss.item()
+                outputs["loss"] += loss
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
-            
-            outputs["teacher_output"] = output["teacher_output"]
-            outputs["teacher_output"] = output["student_output"]
-            outputs["disc_loss"] = output["loss"] * self.meta["disc_weight"]
+
+            outputs["disc_loss"] = output["loss"].item() * self.meta["disc_weight"]
             outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
 
         if self.is_generative:
             output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 
-            
-            outputs["pred"] = output["output"]
-            outputs["mask"] = output["mask"]
-            outputs["gen_loss"] = output["loss"] * self.meta["gen_weight"]
+     
+            outputs["gen_loss"] = output["loss"].item() * self.meta["gen_weight"]
             outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
 
         return outputs
