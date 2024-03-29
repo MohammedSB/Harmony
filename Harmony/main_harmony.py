@@ -406,7 +406,6 @@ def train_one_epoch(model, data_loader,
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             model_output = model(images, epoch, iteration, masks=masks, captions=captions)
-            disc_loss, gen_loss, clip_loss = model_output["disc_loss"], model_output["gen_loss"], model_output["clip_loss"]
             loss = model_output["loss"]
 
         if not math.isfinite(loss.item()):
@@ -458,19 +457,15 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())
-        metric_logger.update(discriminative_loss=disc_loss)
-        metric_logger.update(generative_loss=gen_loss)
-        metric_logger.update(clip_loss=clip_loss)
-        if 'soft_loss' in model_output.keys():
-            metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
+        if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=model_output["disc_loss"])
+        if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=model_output["gen_loss"])
+        if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])
+        if 'soft_loss' in model_output.keys(): metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
-        if model.module.is_contrastive:
-            metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[iteration])
-        if model.module.is_generative:
-            metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[iteration], 2))
-        if 'mlm_loss' in model_output.keys():
-            metric_logger.update(mlm_loss=model_output['mlm_loss'])
+        if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[iteration])
+        if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[iteration], 2))
+        if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=model_output['mlm_loss'])
         # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
 
         meta_training_data['current_iteration'] += 1
