@@ -35,7 +35,7 @@ def get_args_parser():
 
 def main(args):
     # create model(s)
-    image_encoder = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+    image_encoder = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0, can_be_contrastive=True)
     image_encoder.cuda()
     image_state_dict = torch.load(args.image_encoder)
     image_state_dict = {k.replace("module.", ""): v for k, v in image_state_dict.items()}
