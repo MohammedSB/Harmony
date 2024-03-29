@@ -110,9 +110,11 @@ class Harmony(torch.nn.Module):
             outputs["loss"] += output['clip_loss']
 
             if self.meta['use_mlm']:
-                labels = captions.clone()
-                masks = torch.ones_like(captions) * 0.20
-                masks = torch.bernoulli(masks)
+                captions = utils.all_gather_batch_with_grad([captions])
+                captions = torch.cat(captions, dim=0)
+                labels = captions.detach().clone()
+                masks_c = torch.ones_like(captions) * 0.20
+                masks_c = torch.bernoulli(masks_c)
 
                 # zero out all values past the eot.
                 argmax_indices = captions.argmax(dim=1)
@@ -121,12 +123,12 @@ class Harmony(torch.nn.Module):
                 condition_mask[:, 0:1] = 1 # make all sot zero. 1 means add it for condition to remove. 
                 row_indices = torch.arange(condition_mask.size(0))
                 condition_mask[row_indices, argmax_indices] = 1 # make all eot zero.
-                masks[condition_mask] = 0 # make sot and eot zero.
+                masks_c[condition_mask] = 0 # make sot and eot zero.
 
                 # get masked input captions
                 masked_captions = captions.clone()
-                masked_captions[masks == 1] = 49408 # This is mask ID. TODO: do not hard code this
-                labels[masks == 0] = -100 # this is the default ignore value for pytorch ce
+                masked_captions[masks_c == 1] = 49408 # This is mask ID. TODO: do not hard code this
+                labels[masks_c == 0] = -100 # this is the default ignore value for pytorch ce
 
                 _, mlm_output = self.contrastive_path.text_backbone(masked_captions, return_without_proj=True)
                 mlm_output = self.mlm_head(mlm_output)
@@ -136,6 +138,7 @@ class Harmony(torch.nn.Module):
                 loss = torch.nn.functional.cross_entropy(probs, labels)
                 
                 outputs["mlm_loss"] = loss
+                outputs["loss"] += outputs["mlm_loss"]
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
