@@ -17,8 +17,8 @@ import torch
 import torch.backends.cudnn as cudnn
 import json
 import os
-import evaluation.classification_layer_decay.utils as utils
-import evaluation.classification_layer_decay.modeling_finetune
+import Harmony.eval.classification_layer_decay.utils as utils
+import Harmony.eval.classification_layer_decay.modeling_finetune
 
 from pathlib import Path
 from torchvision import datasets, transforms
@@ -32,8 +32,9 @@ from timm.data.constants import \
 from optim_factory import create_optimizer, get_parameter_groups, LayerDecayValueAssigner
 from scipy import interpolate
 from loader import ImageFolder
-from evaluation.classification_layer_decay.engine_for_finetuning import train_one_epoch, evaluate
-from evaluation.classification_layer_decay.utils import NativeScalerWithGradNormCount as NativeScaler
+from Harmony.eval.classification_layer_decay.engine_for_finetuning import train_one_epoch, evaluate
+from Harmony.eval.classification_layer_decay.utils import NativeScalerWithGradNormCount as NativeScaler
+from Harmony.data import ImageNet
 
 def get_args():
     parser = argparse.ArgumentParser('BEiT fine-tuning and evaluation script for image classification', add_help=False)
@@ -236,7 +237,10 @@ def build_dataset(is_train, args):
         args.nb_classes = nb_classes = 100
     elif args.data_set == 'IMNET':
         root = os.path.join(args.data_path, 'train' if is_train else 'val')
-        dataset = ImageFolder(root, transform=transform)
+        if is_train:
+            dataset = ImageFolder(root, transform=transform)
+        else:
+            dataset = ImageNet(root, split="val", transform=transform)
         args.nb_classes = nb_classes = 1000
     elif args.data_set == "image_folder":
         root = args.data_path if is_train else args.eval_data_path
