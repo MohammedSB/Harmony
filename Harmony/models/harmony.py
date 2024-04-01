@@ -107,8 +107,6 @@ class Harmony(torch.nn.Module):
             outputs["loss"] += output['clip_loss']
 
             if self.meta['use_mlm']:
-                captions = utils.all_gather_batch_with_grad([captions])
-                captions = torch.cat(captions, dim=0)
                 labels = captions.detach().clone()
                 masks_c = torch.ones_like(captions) * 0.20
                 masks_c = torch.bernoulli(masks_c)
@@ -132,6 +130,13 @@ class Harmony(torch.nn.Module):
                 
                 probs = mlm_output.view(-1, mlm_output.size(-1)) 
                 labels = labels.view(-1)
+
+                # save memory before all gather
+                indices_to_keep = labels != -100
+                labels = labels[indices_to_keep]
+                probs = probs[indices_to_keep]
+
+                probs, labels = utils.all_gather_batch_with_grad([probs, labels])
                 loss = torch.nn.functional.cross_entropy(probs, labels)
                 
                 outputs["mlm_loss"] = loss.item()
