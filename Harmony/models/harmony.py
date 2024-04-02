@@ -133,8 +133,8 @@ class Harmony(torch.nn.Module):
 
                 loss = torch.nn.functional.cross_entropy(probs, labels)
                 
-                outputs["mlm_loss"] = loss.item()
-                outputs["loss"] += loss
+                outputs["mlm_loss"] = loss.item() * self.meta["mlm_weight"]
+                outputs["loss"] += loss * self.meta["mlm_weight"]
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
