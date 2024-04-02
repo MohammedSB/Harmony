@@ -150,7 +150,7 @@ def get_args_parser():
     parser.add_argument('--contrastive_global_crops', type=utils.bool_flag, default=True, help="""Whether to use global crop in the 
                         contrastive learning objective""")
     parser.add_argument('--use_mlm', type=utils.bool_flag, default=False)
-    parser.add_argument('--use_text_self_distillation', type=utils.bool_flag, default=False)
+    parser.add_argument('--use_text_distillation', type=utils.bool_flag, default=False)
     parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=True)
     parser.add_argument('--hard_labels_weight', type=float, default=1.0, help="""Weight for using the hard labels in CLIP""")
     parser.add_argument('--hard_labels_weight_end', type=float, default=1.0, help="""Final value for hard labels weight in CLIP, after scheduler. 
@@ -352,16 +352,23 @@ def train_one_epoch(model, data_loader,
             names_k.append(name_k)
             params_k.append(param_k)
 
-    if model.module.contrastive_path.use_soft_labels:
+    if model.module.contrastive_path.use_soft_labels or args.use_text_distillation:
+        if args.use_text_distillation:
+            text_student = model.module.text_dist_student
+            text_teacher = model.module.text_dist_teacher
+        else:
+            text_student = model.module.contrastive_path.text_backbone
+            text_teacher = model.module.contrastive_path.text_backbone_teacher
+
         names_tq, params_tq, names_tk, params_tk = [], [], [], []
-        for name_tq, param_tq in model.module.contrastive_path.text_backbone.named_parameters():
+        for name_tq, param_tq in text_student.named_parameters():
             names_tq.append(name_tq)
             params_tq.append(param_tq)
-        for name_tk, param_tk in model.module.contrastive_path.text_backbone_teacher.named_parameters():
+        for name_tk, param_tk in text_teacher.named_parameters():
             names_tk.append(name_tk)
             params_tk.append(param_tk)
-                
-        if not model.module.is_discriminative:
+
+        if model.module.contrastive_path.use_soft_labels and not model.module.is_discriminative:
             names_q, params_q, names_k, params_k = [], [], [], []
             for name_q, param_q in model.module.image_encoder.named_parameters():
                 names_q.append(name_q)
@@ -370,15 +377,7 @@ def train_one_epoch(model, data_loader,
                 names_k.append(name_k)
                 params_k.append(param_k)
 
-        # if args.separate_gen_model:
-        #     names_g_tmp, params_g_tmp = [], []
-        #     for name_g, param_g in model.module.generative_path.named_parameters():
-        #         names_g_tmp.append(name_g)
-        #         params_g_tmp.append(param_g)
-        #     names_common_gen = list(set(names_q) & set(names_g_tmp))
-        #     params_g = [param_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
-        #     names_g = [name_g for name_g, param_g in zip(names_g_tmp, params_g_tmp) if name_g in names_common_gen]
-
+    if model.module.is_discriminative or model.module.contrastive_path.use_soft_labels:
         names_common = list(set(names_q) & set(names_k))
         params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
         params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
@@ -441,16 +440,8 @@ def train_one_epoch(model, data_loader,
         if model.module.is_discriminative or model.module.use_soft_labels:
             with torch.no_grad():
                 m = momentum_schedule[it]  # momentum parameter
-                # param_index = 0
                 for param_q, param_k in zip(params_q, params_k):
-                    # if args.separate_gen_model and names_q[param_index] in names_common_gen:
-                    #     gen_param_index = names_g.index(names_q[param_index])
-                    #     param_g = params_g[gen_param_index]
-                    #     param_k.data.mul_(m).add_((1 - m) * ( (param_q.detach().data + param_g.detach().data) / 2 ) )
-                    # else:
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-                    # param_index+=1
-
                 # If using soft labels, update text encoder teacher
                 if model.module.contrastive_path.use_soft_labels:
                     for param_tq, param_tk in zip(params_tq, params_tk):
@@ -468,6 +459,7 @@ def train_one_epoch(model, data_loader,
         if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[iteration])
         if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[iteration], 2))
         if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=model_output['mlm_loss'])
+        if 'text_dist_loss' in model_output.keys(): metric_logger.update(text_dist_loss=model_output['text_dist_loss'])
         # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
 
         meta_training_data['current_iteration'] += 1
