@@ -131,12 +131,6 @@ class Harmony(torch.nn.Module):
                 probs = mlm_output.view(-1, mlm_output.size(-1)) 
                 labels = labels.view(-1)
 
-                # save memory before all gather
-                indices_to_keep = labels != -100
-                labels = labels[indices_to_keep]
-                probs = probs[indices_to_keep]
-
-                probs, labels = utils.all_gather_batch_with_grad([probs, labels])
                 loss = torch.nn.functional.cross_entropy(probs, labels)
                 
                 outputs["mlm_loss"] = loss.item()
