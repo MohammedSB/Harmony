@@ -182,8 +182,8 @@ class Harmony(torch.nn.Module):
                 if torch.isnan(loss):
                     loss = torch.tensor(0.0) 
                 
-                outputs["text_dist_loss"] = loss.item() 
-                outputs["loss"] += loss
+                outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
+                outputs["loss"] += loss * self.meta["text_dist_weight"]
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
