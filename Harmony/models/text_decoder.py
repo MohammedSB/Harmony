@@ -3,9 +3,10 @@ import torch.nn as nn
 from Harmony.models.transformer import Transformer, LayerNorm
 
 class TextDecoder(torch.nn.Module):
-    def __init__(self, vocab_size=49409, transformer_width=512, transformer_heads=8,
+    def __init__(self, context_length=77, vocab_size=49409, transformer_width=512, transformer_heads=8,
                  transformer_layers=4, embed_dim=512):
         super(TextDecoder, self).__init__()
+        self.context_length = context_length
         self.vocab_size = vocab_size
         self.transformer_width = transformer_width
         self.transformer_heads = transformer_heads 
