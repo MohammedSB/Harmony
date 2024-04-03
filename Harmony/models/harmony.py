@@ -7,15 +7,12 @@ from torchvision import models as torchvision_models
 import Harmony.utils as utils
 import Harmony.models.vision_transformer as vits
 from Harmony.models.transformer import Transformer, LayerNorm
-from Harmony.models.text_encoder import TextEncoder
 from Harmony.models.text_decoder import TextDecoder
-from Harmony.models.heads.text_dist_head import TextDistillationHead 
-from Harmony.models.utils import CustomTextHeadSequential
-from Harmony.losses.text_dist_loss import TextDistillationLoss
+from .text_distillation import TextDistillationPath
 from .generative import GenerativePath
 from .discriminative import DiscriminativePath
 from .contrastive import ContrastivePath
-from .utils import get_embedding_size_from_arch
+from .utils import get_embedding_size_from_arch, get_masked_captions
 
 class Harmony(torch.nn.Module):
     def __init__(self, args, meta_training_data=None):
@@ -39,7 +36,6 @@ class Harmony(torch.nn.Module):
                 masked_im_modeling=self.meta['use_masked_im_modeling'],
                 can_be_contrastive=True,
             )
-            self.gen_encoder = self.image_encoder
         except:
             raise Exception(f"Unknow arch: {self.meta['arch']}")
         self.meta['embed_dim'] = self.image_encoder.embed_dim
@@ -60,22 +56,28 @@ class Harmony(torch.nn.Module):
 
         self.use_soft_labels = np.any(self.hard_labels_weight_scheduler < 1.0) 
        
-        # initialize the variables
-        self.is_discriminative = False
-        self.is_generative = False
-        self.is_contrastive = False 
+        # initialize variables
+        self.is_discriminative, self.is_generative, self.is_contrastive = False, False, False  
+        self.teacher, self.student, self.text_teacher, self.text_student = None, None, None, None
 
         if "dino" in self.objective or "ibot" in self.objective:
             self.discriminative_path = DiscriminativePath(image_encoder=self.image_encoder, meta=self.meta)
             self.is_discriminative = True
 
+            self.teacher = self.discriminative_path.teacher
+            self.student = self.discriminative_path.student
+
         if "mae" in self.objective:
-            self.generative_path = GenerativePath(backbone=self.gen_encoder, meta=self.meta)
+            self.generative_path = GenerativePath(backbone=self.image_encoder, meta=self.meta)
             self.is_generative = True
 
         if "clip" in self.objective:
             self.contrastive_path = ContrastivePath(image_backbone=self.image_encoder, meta=self.meta, use_soft_labels=self.use_soft_labels)
             self.is_contrastive = True
+
+            self.text_student = self.contrastive_path.text_backbone
+            if hasattr(self.contrastive_path, 'text_backbone_teacher'): # check if we already defined a text teacher from contrastive path 
+                self.text_teacher = self.contrastive_path.text_backbone_teacher
 
             if self.meta['use_mlm']:
                 print("Using masked language modeling")
@@ -83,44 +85,20 @@ class Harmony(torch.nn.Module):
 
             if self.meta['use_text_distillation']:
                 print("Using text self-dist")
-                text_embed_dim = 512
-                text_dist_out_dim = self.meta['out_dim'] // 4
-                self.text_dist_student = CustomTextHeadSequential(self.contrastive_path.text_backbone, TextDistillationHead(
-                    text_embed_dim, # this is the out_dim for text encoder
-                    text_dist_out_dim,
-                    norm=self.meta['norm_in_head'],
-                    norm_last_layer=self.meta['norm_last_layer']
-                ))
-                if hasattr(self.contrastive_path, 'text_backbone_teacher'): # check if we have a teacher backbone from contrastive path
-                    print("Using teacher backbone from contrastive path in text self-dist")
-                    text_dist_teacher = self.contrastive_path.text_backbone_teacher
-                else:
-                    print("Defininig a new teacher backbone for text self-dist")
-                    vocab_size = 49408 + 1
-                    text_dist_teacher = TextEncoder(embed_dim=text_embed_dim, vocab_size=vocab_size)
+                self.text_distillation_path = TextDistillationPath(meta=self.meta, text_student=self.text_student, text_teacher=self.text_teacher)
+                
+                # expand student and teacher networks to include the text distillation path 
+                self.text_student = self.text_distillation_path.text_dist_student
+                self.text_teacher = self.text_distillation_path.text_dist_teacher
 
-                self.text_dist_teacher = CustomTextHeadSequential(text_dist_teacher, TextDistillationHead(
-                    text_embed_dim,
-                    text_dist_out_dim,
-                    norm=self.meta['norm_in_head'],
-                    norm_last_layer=self.meta['norm_last_layer']
-                ))
-                for param in self.text_dist_teacher.parameters():
-                    param.requires_grad = False
+        if self.student == None:
+            self.student = self.image_encoder
 
-                self.text_distillation_loss = TextDistillationLoss(
-                    text_embed_dim,
-                    text_dist_out_dim,
-                    self.meta['warmup_teacher_patch_temp'],
-                    self.meta['teacher_patch_temp'],
-                    self.meta['warmup_teacher_temp_epochs'],
-                    self.meta['epochs']
-                )
-
-        if self.use_soft_labels and not self.is_discriminative:
+        if self.use_soft_labels and self.teacher == None:
+            print("Defining a image teacher encoder for soft labels")
             self.teacher = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
-                return_all_tokens=True if "ibot" in self.meta['objective'] else False,
+                return_all_tokens=False,
                 can_be_contrastive=True,
             )
             
@@ -141,23 +119,7 @@ class Harmony(torch.nn.Module):
 
             if self.meta['use_mlm'] or self.meta['use_text_distillation']:
                 labels = captions.detach().clone()
-                masks_c = torch.ones_like(captions) * 0.20
-                masks_c = torch.bernoulli(masks_c)
-
-                # zero out all values past the eot.
-                argmax_indices = captions.argmax(dim=1)
-                range_tensor = torch.arange(captions.shape[1], device=captions.device).expand_as(captions)
-                condition_mask = range_tensor > argmax_indices.unsqueeze(1)
-                condition_mask[:, 0:1] = 1 # make all sot zero. 1 means add it for condition to remove. 
-                row_indices = torch.arange(condition_mask.size(0))
-                condition_mask[row_indices, argmax_indices] = 1 # make all eot zero.
-                masks_c[condition_mask] = 0 # make sot and eot zero.
-
-                # get masked input captions
-                masked_captions = captions.clone()
-                masked_captions[masks_c == 1] = 49408 # This is mask ID. TODO: do not hard code this
-                labels[masks_c == 0] = -100 # this is the default ignore value for pytorch ce
-
+                masked_captions, labels, masks_c = get_masked_captions(captions=captions, labels=labels)
                 _, text_embedding = self.contrastive_path.text_backbone(masked_captions, return_without_proj=True)
                 
             if self.meta['use_mlm']:
@@ -174,14 +136,7 @@ class Harmony(torch.nn.Module):
                 outputs["loss"] += loss * self.meta["mlm_weight"]
 
             if self.meta['use_text_distillation']:
-                student_text_embeddings = self.text_dist_student.only_head(text_embedding)
-                teacher_text_embeddings = self.text_dist_teacher(captions)
-
-                loss = self.text_distillation_loss(student_text_embeddings, teacher_text_embeddings,
-                                                   masks_c, epoch)
-                if torch.isnan(loss):
-                    loss = torch.tensor(0.0) 
-                
+                loss = self.text_distillation_path(captions, masks_c, epoch, text_embedding)
                 outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
                 outputs["loss"] += loss * self.meta["text_dist_weight"]
 

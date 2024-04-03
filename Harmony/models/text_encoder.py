@@ -3,7 +3,7 @@ import torch.nn as nn
 from Harmony.models.transformer import Transformer, LayerNorm
 
 class TextEncoder(torch.nn.Module):
-    def __init__(self, context_length=77, vocab_size=49408, transformer_width=512, transformer_heads=8,
+    def __init__(self, context_length=77, vocab_size=49409, transformer_width=512, transformer_heads=8,
                  transformer_layers=12, embed_dim=512):
         super(TextEncoder, self).__init__()
         self.context_length = context_length
@@ -19,6 +19,8 @@ class TextEncoder(torch.nn.Module):
             heads=self.transformer_heads,
             attn_mask=self.build_attention_mask(),
         )
+        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        # self.context_length = self.context_length + 1
 
         self.text_embedding = torch.nn.Embedding(self.vocab_size, self.transformer_width)
         self.text_positional_embedding = torch.nn.Parameter(torch.empty(self.context_length, self.transformer_width))
@@ -37,6 +39,7 @@ class TextEncoder(torch.nn.Module):
 
     def init(self):
         nn.init.normal_(self.text_embedding.weight, std=0.02)
+        # nn.init.normal_(self.cls_token, std=0.02)
         nn.init.normal_(self.text_positional_embedding, std=0.01)
 
         proj_std = (self.backbone.width ** -0.5) * ((2 * self.backbone.layers) ** -0.5)

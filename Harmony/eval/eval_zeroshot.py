@@ -39,7 +39,7 @@ def main(args):
     image_encoder.cuda()
     image_state_dict = torch.load(args.image_encoder)
     image_state_dict = {k.replace("module.", ""): v for k, v in image_state_dict.items()}
-    image_encoder.load_state_dict(image_state_dict, strict=True)
+    image_encoder.load_state_dict(image_state_dict, strict=False)
     print("=> loaded image checkpoint '{}'".format(args.image_encoder))
 
     
@@ -47,7 +47,7 @@ def main(args):
     text_encoder.cuda()
     text_state_dict = torch.load(args.text_encoder)
     text_state_dict = {k.replace("module.", ""): v for k, v in text_state_dict.items()}
-    text_encoder.load_state_dict(text_state_dict, strict=True)
+    text_encoder.load_state_dict(text_state_dict, strict=False)
     print("=> loaded text checkpoint '{}'".format(args.text_encoder))
 
     cudnn.benchmark = True

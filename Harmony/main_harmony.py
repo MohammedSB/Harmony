@@ -63,7 +63,7 @@ def get_args_parser():
         the same head for [CLS] token output and patch tokens output. When set to false, patch_out_dim
         is ignored and enforced to be same with out_dim. (Default: False)""")
     parser.add_argument('--shared_head_teacher', default=True, type=utils.bool_flag, help="""See above.
-        Only works for teacher model. (Defeault: True)""")
+        Only works for teacher model.module. (Defeault: True)""")
     parser.add_argument('--norm_last_layer', default=True, type=utils.bool_flag,
         help="""Whether or not to weight normalize the last layer of the DINO head.
         Not normalizing leads to better performance but can make the training unstable.
@@ -236,7 +236,6 @@ def train(args):
     print(f"Data loaded: there are {len(dataset)} images.")
 
     meta_training_data = { 
-        'current_iteration': 0,
         'num_iterations_per_epoch': len(data_loader),
         'num_iterations_total': len(data_loader) * args.epochs
     }
@@ -282,7 +281,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None,
+        disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
 
@@ -308,25 +307,36 @@ def train(args):
         }
 
         # saving teacher vit separately
-        if model.module.is_discriminative:
-            main_vit = model.module.discriminative_path.teacher.backbone.state_dict()
-        elif model.module.use_soft_labels:
-            main_vit = model.module.teacher.state_dict()
+        try: # yes I am lazy
+            main_vit = model.module.teacher.backbone.state_dict() # if it has ibot/dino head, remove it
+        except:
+            try:
+                main_vit = model.module.teacher.state_dict()
+            except:
+                main_vit = model.module.student.state_dict()
+
+        if model.module.text_teacher != None or model.module.text_student != None:
+            try:
+                main_text = model.module.text_teacher.backbone.state_dict() # if it has text dist head, remove it
+            except:
+                try:
+                    main_text = model.module.text_teacher.state_dict()
+                except:
+                    main_text = model.module.text_student.state_dict()
         else:
-            main_vit = model.module.image_encoder.state_dict()
-        if model.module.is_contrastive:
-            main_text = model.module.contrastive_path.text_backbone_teacher.state_dict() \
-                  if model.module.contrastive_path.use_soft_labels else model.module.contrastive_path.text_backbone.state_dict()
+            main_text = None           
 
         if fp16_scaler is not None:
             save_dict['fp16_scaler'] = fp16_scaler.state_dict()
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
         utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
-        utils.save_on_master(main_text, os.path.join(args.output_dir, 'main_text_checkpoint.pth'))
+        if main_text != None:
+            utils.save_on_master(main_text, os.path.join(args.output_dir, 'main_text_checkpoint.pth'))
         if args.saveckp_freq and epoch % args.saveckp_freq == 0:
             utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
             utils.save_on_master(main_vit, os.path.join(args.output_dir, f'main_vit_checkpoint{epoch:04}.pth'))
-            utils.save_on_master(main_text, os.path.join(args.output_dir, f'main_text_checkpoint{epoch:04}.pth'))
+            if main_text != None:
+                utils.save_on_master(main_text, os.path.join(args.output_dir, f'main_text_checkpoint{epoch:04}.pth'))
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch}
         if utils.is_main_process():
@@ -344,48 +354,29 @@ def train_one_epoch(model, data_loader,
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
 
     # common params
-    if model.module.is_discriminative:
-        names_q, params_q, names_k, params_k = [], [], [], []
-        for name_q, param_q in model.module.discriminative_path.student.named_parameters():
+    names_q, params_q, names_k, params_k = [], [], [], []
+    names_tq, params_tq, names_tk, params_tk = [], [], [], []
+    if model.module.teacher != None:
+        for name_q, param_q in model.module.student.named_parameters():
             names_q.append(name_q)
             params_q.append(param_q)
-        for name_k, param_k in model.module.discriminative_path.teacher.named_parameters():
+        for name_k, param_k in model.module.teacher.named_parameters():
             names_k.append(name_k)
             params_k.append(param_k)
 
-    if model.module.contrastive_path.use_soft_labels or args.use_text_distillation:
-        if args.use_text_distillation:
-            text_student = model.module.text_dist_student
-            text_teacher = model.module.text_dist_teacher
-        else:
-            text_student = model.module.contrastive_path.text_backbone
-            text_teacher = model.module.contrastive_path.text_backbone_teacher
-
-        names_tq, params_tq, names_tk, params_tk = [], [], [], []
-        for name_tq, param_tq in text_student.named_parameters():
+    if model.module.text_teacher != None:
+        for name_tq, param_tq in model.module.text_student.named_parameters():
             names_tq.append(name_tq)
             params_tq.append(param_tq)
-        for name_tk, param_tk in text_teacher.named_parameters():
+        for name_tk, param_tk in model.module.text_teacher.named_parameters():
             names_tk.append(name_tk)
             params_tk.append(param_tk)
 
-        if model.module.contrastive_path.use_soft_labels and not model.module.is_discriminative:
-            names_q, params_q, names_k, params_k = [], [], [], []
-            for name_q, param_q in model.module.image_encoder.named_parameters():
-                names_q.append(name_q)
-                params_q.append(param_q)
-            for name_k, param_k in model.module.teacher.named_parameters():
-                names_k.append(name_k)
-                params_k.append(param_k)
-
-    if model.module.is_discriminative or model.module.contrastive_path.use_soft_labels:
-        names_common = list(set(names_q) & set(names_k))
-        params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
-        params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
+    names_common = list(set(names_q) & set(names_k))
+    params_q = [param_q for name_q, param_q in zip(names_q, params_q) if name_q in names_common]
+    params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
 
     for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
-
-        iteration = meta_training_data['current_iteration']
 
         if len(data) == 3:
             images, captions, masks = data
@@ -407,7 +398,7 @@ def train_one_epoch(model, data_loader,
 
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
-            model_output = model(images, epoch, iteration, masks=masks, captions=captions)
+            model_output = model(images, epoch, it, masks=masks, captions=captions)
             loss = model_output["loss"]
 
         if not math.isfinite(loss.item()):
@@ -417,7 +408,7 @@ def train_one_epoch(model, data_loader,
         # student update
         optimizer.zero_grad()
         param_norms = None
-        student = model.module.discriminative_path.student if model.module.is_discriminative else model.module.image_encoder
+        student = model.module.student
         if fp16_scaler is None:
             loss.backward()
             if args.clip_grad:
@@ -438,15 +429,17 @@ def train_one_epoch(model, data_loader,
             fp16_scaler.update()
 
         # EMA update for the teacher
-        if model.module.is_discriminative or model.module.use_soft_labels:
+        m = momentum_schedule[it]  # momentum parameter
+        if model.module.teacher != None:
             with torch.no_grad():
-                m = momentum_schedule[it]  # momentum parameter
                 for param_q, param_k in zip(params_q, params_k):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-                # If using soft labels, update text encoder teacher
-                if model.module.contrastive_path.use_soft_labels:
-                    for param_tq, param_tk in zip(params_tq, params_tk):
-                        param_tk.data.mul_(m).add_((1 - m) * param_tq.detach().data)
+        
+        # If using soft labels, update text encoder teacher
+        if model.module.text_teacher != None:
+            with torch.no_grad():
+                for param_tq, param_tk in zip(params_tq, params_tk):
+                    param_tk.data.mul_(m).add_((1 - m) * param_tq.detach().data)
 
         # logging
         torch.cuda.synchronize()
@@ -455,16 +448,12 @@ def train_one_epoch(model, data_loader,
         if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=model_output["gen_loss"])
         if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])
         if 'soft_loss' in model_output.keys(): metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
-        if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[iteration])
-        if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[iteration], 2))
         if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=model_output['mlm_loss'])
         if 'text_dist_loss' in model_output.keys(): metric_logger.update(text_dist_loss=model_output['text_dist_loss'])
-        # metric_logger.update(iteration=f"{iteration}/{meta_training_data['num_iterations_total']}")
-
-        meta_training_data['current_iteration'] += 1
-    
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
+        if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])
+        if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[it], 2))    
     
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

@@ -3,4 +3,4 @@ Harmony/other/
 Harmony/checkpoint/
 Harmony/results/
 Harmony/data/meta/dataset_catalog.json
-unilm\beit\semantic_segmentation\configs\_base_\datasets\ade20k.py
+unilm/beit/semantic_segmentation/configs/_base_/datasets/ade20k.py
