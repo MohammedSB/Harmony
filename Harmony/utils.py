@@ -74,8 +74,9 @@ def get_backend():
         return 'nccl'
 
 class DataAugmentation(object):
-    def __init__(self, global_crops_scale, local_crops_scale, global_crops_number, local_crops_number, objective):
+    def __init__(self, global_crops_scale, local_crops_scale, global_crops_number, local_crops_number, objective, do_simple_aug=False):
         self.objective = objective
+        self.do_simple_aug = do_simple_aug
         flip_and_color_jitter = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
@@ -88,7 +89,6 @@ class DataAugmentation(object):
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
-
         # simple augmentation
         self.simple_aug = transforms.Compose([
             transforms.RandomResizedCrop(224, scale=(0.4, 1.0), interpolation=3),  # 3 is bicubic
@@ -124,7 +124,11 @@ class DataAugmentation(object):
 
     def __call__(self, image):
         crops = []
-        crops.append(self.simple_aug(image))
+
+        if self.do_simple_aug:
+            crops.append(self.simple_aug(image))
+        else:
+            crops.append(torch.empty()) # to keep indices consistent
 
         crops.append(self.global_transfo1(image))
         for _ in range(self.global_crops_number - 1):

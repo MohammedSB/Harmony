@@ -87,7 +87,7 @@ class Harmony(torch.nn.Module):
                 print("Using text self-dist")
                 self.text_distillation_path = TextDistillationPath(meta=self.meta, text_student=self.text_student, text_teacher=self.text_teacher)
 
-                # expand student and teacher networks to include the text distillation path 
+                # expand student and teacher networks to include the text distillation heads 
                 self.text_student = self.text_distillation_path.text_dist_student
                 self.text_teacher = self.text_distillation_path.text_dist_teacher
 
@@ -101,6 +101,8 @@ class Harmony(torch.nn.Module):
                 return_all_tokens=False,
                 can_be_contrastive=True,
             )
+            for p in self.teacher.parameters():
+                p.requires_grad = False
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
@@ -136,7 +138,7 @@ class Harmony(torch.nn.Module):
                 outputs["loss"] += loss * self.meta["mlm_weight"]
 
             if self.meta['use_text_distillation']:
-                loss = self.text_distillation_path(masked_captions, masks_c, epoch, text_embedding)
+                loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
                 outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
                 outputs["loss"] += loss * self.meta["text_dist_weight"]
 

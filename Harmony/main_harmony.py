@@ -200,6 +200,9 @@ def train(args):
         print("saving run setting")
         pickle.dump(dict(vars(args)), file)
 
+    simple_aug = not(args.contrastive_global_crops and args.reconstruct_global_crops) 
+    if not simple_aug:
+        print("Not using simple augmentation to save memory")
     # ============ preparing data ... ============
     transform = DataAugmentation(
         args.global_crops_scale,
@@ -207,6 +210,7 @@ def train(args):
         args.global_crops_number, 
         args.local_crops_number,
         args.objective,
+        simple_aug
     )
     data_root = args.data.split(":")[1]
     data = get_dataset_from_string(args.data)
@@ -299,7 +303,7 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'model': model.state_dict(),
+            'model': model.module.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
@@ -435,7 +439,6 @@ def train_one_epoch(model, data_loader,
                 for param_q, param_k in zip(params_q, params_k):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
         
-        # If using soft labels, update text encoder teacher
         if model.module.text_teacher != None:
             with torch.no_grad():
                 for param_tq, param_tk in zip(params_tq, params_tk):

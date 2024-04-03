@@ -42,11 +42,11 @@ class TextDistillationPath(torch.nn.Module):
             self.meta['epochs']
         )
 
-    def forward(self, captions, masks_c, epoch, text_embedding=None):
+    def forward(self, captions, masked_captions, masks_c, epoch, text_embedding=None):
         if text_embedding != None:
             student_text_embeddings = self.text_dist_student.only_head(text_embedding)
         else:
-            student_text_embeddings = self.text_dist_student(captions)
+            student_text_embeddings = self.text_dist_student(masked_captions)
         teacher_text_embeddings = self.text_dist_teacher(captions)
 
         loss = self.text_distillation_loss(student_text_embeddings, teacher_text_embeddings,
