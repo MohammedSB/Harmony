@@ -29,7 +29,7 @@ def get_masked_captions(captions, labels):
     masked_captions[masks_c == 1] = 49408 # This is mask ID. TODO: do not hard code this                
     labels[masks_c == 0] = -100 # this is the default ignore value for pytorch ce
 
-    return captions, labels, masks_c
+    return masked_captions, labels, masks_c
 
 
 class CustomTextHeadSequential(nn.Module):

@@ -46,7 +46,7 @@ class TextDistillationPath(torch.nn.Module):
         if text_embedding != None:
             student_text_embeddings = self.text_dist_student.only_head(text_embedding)
         else:
-            student_text_embeddings = self.text_dist_student(text_embedding)
+            student_text_embeddings = self.text_dist_student(captions)
         teacher_text_embeddings = self.text_dist_teacher(captions)
 
         loss = self.text_distillation_loss(student_text_embeddings, teacher_text_embeddings,

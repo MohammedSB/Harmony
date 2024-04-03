@@ -86,7 +86,7 @@ class Harmony(torch.nn.Module):
             if self.meta['use_text_distillation']:
                 print("Using text self-dist")
                 self.text_distillation_path = TextDistillationPath(meta=self.meta, text_student=self.text_student, text_teacher=self.text_teacher)
-                
+
                 # expand student and teacher networks to include the text distillation path 
                 self.text_student = self.text_distillation_path.text_dist_student
                 self.text_teacher = self.text_distillation_path.text_dist_teacher
@@ -136,7 +136,7 @@ class Harmony(torch.nn.Module):
                 outputs["loss"] += loss * self.meta["mlm_weight"]
 
             if self.meta['use_text_distillation']:
-                loss = self.text_distillation_path(captions, masks_c, epoch, text_embedding)
+                loss = self.text_distillation_path(masked_captions, masks_c, epoch, text_embedding)
                 outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
                 outputs["loss"] += loss * self.meta["text_dist_weight"]
 
