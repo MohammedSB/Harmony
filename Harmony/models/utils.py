@@ -45,3 +45,37 @@ class CustomTextHeadSequential(nn.Module):
     
     def only_head(self, x):
         return self.distillation_head(x)
+    
+
+def get_att_mask(attention, ratio=0.5):
+    bs = attention.shape[0]  
+    masks = torch.ones((bs, 49), dtype=torch.bool, device=attention.device)
+    attention = attention.reshape((-1, 14, 14))
+    attention = torch.nn.functional.interpolate(attention.unsqueeze(1), (7, 7), mode='bilinear').squeeze()
+    attention = attention.reshape(bs,-1)
+    N = int(attention.shape[1] * (1 - ratio))
+
+    reservation = torch.argsort(attention, descending=True)
+    reservation = reservation[:,:N+1]
+    masks = masks.scatter_(1, reservation, False)
+ 
+    full_mask = torch.zeros((bs, 14, 14), dtype=torch.bool, device=attention.device)
+    full_mask[:, 0::2, 0::2] = masks.reshape(bs, 7, 7)
+    full_mask[:, 0::2, 1::2] = masks.reshape(bs, 7, 7)
+    full_mask[:, 1::2, 0::2] = masks.reshape(bs, 7, 7)
+    full_mask[:, 1::2, 1::2] = masks.reshape(bs, 7, 7)
+    full_mask = full_mask.reshape(bs, -1)
+
+    return full_mask
+
+
+def get_att_mask_2(attention, ratio=0.5):
+    bs = attention.shape[0]  
+    N = int(attention.shape[1] * (1 - ratio))
+
+    masks = torch.ones((bs, attention.shape[1]), dtype=torch.bool, device=attention.device)
+    reservation = torch.argsort(attention, descending=True)
+    reservation = reservation[:,:N+1]
+    masks = masks.scatter_(1, reservation, False)
+
+    return masks

@@ -128,7 +128,7 @@ class DataAugmentation(object):
         if self.do_simple_aug:
             crops.append(self.simple_aug(image))
         else:
-            crops.append(torch.empty()) # to keep indices consistent
+            crops.append(torch.zeros(1)) # to keep indices consistent
 
         crops.append(self.global_transfo1(image))
         for _ in range(self.global_crops_number - 1):
@@ -672,7 +672,6 @@ class LARS(torch.optim.Optimizer):
 
                 p.add_(mu, alpha=-g['lr'])
 
-
 class MultiCropWrapper(nn.Module):
     """
     Perform forward pass separately on each resolution input.
@@ -694,7 +693,7 @@ class MultiCropWrapper(nn.Module):
    
     
     def forward(self, x, mask=None, return_backbone_feat=False, 
-                **kwargs):
+                return_attn=False, **kwargs):
         # convert to list
         if not isinstance(x, list):
             x = [x]
@@ -711,16 +710,21 @@ class MultiCropWrapper(nn.Module):
                 inp_m = torch.cat(mask[start_idx: end_idx])
                 kwargs.update(dict(mask=inp_m))
 
-            _out = self.backbone(inp_x, **kwargs)
+            _out, _attn = self.backbone(inp_x, return_attn=True, **kwargs)
             if start_idx == 0:
                 output = _out
+                attn = _attn # only get attention for first view
+                # print(_attn.shape)
             else:
                 output = torch.cat((output, _out))
+                # attn = torch.cat((attn, _attn)) 
             start_idx = end_idx
         # Run the head forward on the concatenated features.
         output_ = self.head(output)
         if return_backbone_feat:
             return output, output_
+        if return_attn:
+            return output_, attn
         return output_
 
 

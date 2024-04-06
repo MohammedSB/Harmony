@@ -152,6 +152,7 @@ def get_args_parser():
                         contrastive learning objective""")
     parser.add_argument('--use_mlm', type=utils.bool_flag, default=False)
     parser.add_argument('--use_text_distillation', type=utils.bool_flag, default=False)
+    parser.add_argument('--attentive_masking', type=utils.bool_flag, default=False)
     parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=True)
     parser.add_argument('--hard_labels_weight', type=float, default=1.0, help="""Weight for using the hard labels in CLIP""")
     parser.add_argument('--hard_labels_weight_end', type=float, default=1.0, help="""Final value for hard labels weight in CLIP, after scheduler. 

@@ -113,14 +113,15 @@ class Block(nn.Module):
 
     def forward(self, x, return_attention=False):
         y, attn = self.attn(self.norm1(x))
-        if return_attention:
-            return attn
         if self.gamma_1 is None:
             x = x + self.drop_path(y)
             x = x + self.drop_path(self.mlp(self.norm2(x)))
         else:
             x = x + self.drop_path(self.gamma_1 * y)
             x = x + self.drop_path(self.gamma_2 * self.mlp(self.norm2(x)))
+
+        if return_attention:
+            return x, attn
         return x
 
 
@@ -224,7 +225,6 @@ class VisionTransformer(nn.Module):
         # patch linear embedding
         x = self.patch_embed(x)
 
-        # mask image modeling
         if mask is not None:
             x = self.mask_model(x, mask)
         x = x.flatten(2).transpose(1, 2)
@@ -237,17 +237,46 @@ class VisionTransformer(nn.Module):
         x = x + self.interpolate_pos_encoding(x, w, h)
 
         return self.pos_drop(x)
+    
+    def prepare_tokens_with_mask_removal(self, x, mask):
+        B, nc, w, h = x.shape
 
-    def forward(self, x, return_all_tokens=None, mask=None, contrastive=False):
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        # add positional encoding to each token
+        x = x + self.pos_embed[:, 1:]
+
+        N, L, D = x.shape  # batch, length, dim
+        ids = torch.argsort(mask.long(), dim=1)  # ascend
+        mask_len = mask[0].sum()
+        ids_keep = ids[:, : L - mask_len]
+        x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+
+        cls_tokens = self.cls_token.expand(B, -1, -1)
+        cls_tokens = cls_tokens + self.pos_embed[:, 0]
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        return x
+
+    def forward(self, x, return_all_tokens=None, mask=None, contrastive=False, return_attn=False, remove_mask=False):
         # mim
-        if self.masked_im_modeling:
+        attension = []
+        if remove_mask:
+            x = self.prepare_tokens_with_mask_removal(x, mask)
+        elif self.masked_im_modeling:
             assert mask is not None
             x = self.prepare_tokens(x, mask=mask)
         else:
             x = self.prepare_tokens(x)
 
         for blk in self.blocks:
-            x = blk(x)
+            x, attn = blk(x, return_attention=True)
+            attension.append(attn)
+
+        attension = torch.stack(attension, dim=0)
+        attension = torch.mean(attension, dim=0)
+        attension = attension[:, :, 0, 1:].mean(1).detach().clone()
 
         x = self.norm(x)
         if self.fc_norm is not None:
@@ -256,10 +285,16 @@ class VisionTransformer(nn.Module):
         return_all_tokens = self.return_all_tokens if \
             return_all_tokens is None else return_all_tokens
         if return_all_tokens:
-            return x
+            if return_attn:
+                return x, attension
+            else:
+                return x
         cls_token = x[:, 0]
+    
         if contrastive:
             cls_token = cls_token @ self.contrastive_projection
+        if return_attn:
+            return cls_token, attension
         return cls_token
 
     def get_last_selfattention(self, x):

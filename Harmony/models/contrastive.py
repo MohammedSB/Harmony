@@ -6,6 +6,7 @@ import torch.nn as nn
 from Harmony.models.vision_transformer import Block
 from Harmony.models.text_encoder import TextEncoder
 from Harmony.losses import CLIPLoss
+from .utils import get_att_mask, get_att_mask_2
 
 class ContrastivePath(nn.Module):
     def __init__(self, image_backbone, meta, use_soft_labels):
@@ -31,14 +32,25 @@ class ContrastivePath(nn.Module):
                 param.requires_grad = False
 
         
-    def forward(self, images, captions, hard_weight, teacher=None):
+    def forward(self, images, captions, hard_weight, teacher=None, teacher_attn=None):
         # TODO: do this in a better way
         self.image_backbone.masked_im_modeling = False
         self.image_backbone.return_all_tokens = False
 
         indx = int(self.meta['contrastive_global_crops']) 
+
+        if self.meta['attentive_masking']:
+            if teacher_attn != None:
+                attention_map = teacher_attn
+                attention_map = attention_map[0::2]
+            else:
+                _, attention_map = teacher(images[indx], return_attn=True)
+            mask = get_att_mask_2(attention_map, ratio=0.5) 
+        else:
+            mask = None
+
         text_embed = self.text_backbone(captions)
-        image_embed = self.image_backbone(images[indx], contrastive=True) 
+        image_embed = self.image_backbone(images[indx], mask=mask, remove_mask=True, contrastive=True) 
 
         if self.use_soft_labels and teacher:
             # TODO: do this in a better way

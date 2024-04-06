@@ -12,7 +12,7 @@ from .text_distillation import TextDistillationPath
 from .generative import GenerativePath
 from .discriminative import DiscriminativePath
 from .contrastive import ContrastivePath
-from .utils import get_embedding_size_from_arch, get_masked_captions
+from .utils import get_embedding_size_from_arch, get_masked_captions, get_att_mask
 
 class Harmony(torch.nn.Module):
     def __init__(self, args, meta_training_data=None):
@@ -94,8 +94,8 @@ class Harmony(torch.nn.Module):
         if self.student == None:
             self.student = self.image_encoder
 
-        if self.use_soft_labels and self.teacher == None:
-            print("Defining a image teacher encoder for soft labels")
+        if (self.use_soft_labels and self.teacher == None) or (self.meta['attentive_masking'] and self.teacher != None):
+            print("Defining a image teacher encoder for soft labels or attentive masking")
             self.teacher = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
                 return_all_tokens=False,
@@ -107,15 +107,30 @@ class Harmony(torch.nn.Module):
     def forward(self, images, epoch, iteration, captions=None, masks=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
         outputs = {"loss": loss}
+
+        if self.is_discriminative:
+            output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
+
+            outputs["disc_loss"] = output["loss"].item() * self.meta["disc_weight"]
+            outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
         
         if self.is_contrastive:
-            if self.use_soft_labels:
-                teacher = self.discriminative_path.teacher.backbone if self.is_discriminative else self.teacher
-                hard_weight = self.hard_labels_weight_scheduler[iteration] if self.is_discriminative else 0
-                output = self.contrastive_path(images, captions, hard_weight, teacher)
-                if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss'].item()
+
+            # see which teacher model we can use, if any            
+            if self.is_discriminative:
+                teacher = self.discriminative_path.teacher.backbone
+                teacher_attn = output["teacher_attn"]  
+            elif self.teacher != None:
+                teacher = self.teacher
+                teacher_attn = None
             else:
-                output = self.contrastive_path(images, captions, self.hard_labels_weight_scheduler[iteration])
+                teacher = None
+                teacher_attn = None
+
+            hard_weight = self.hard_labels_weight_scheduler[iteration]
+            output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
+
+            if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss'].item()
             outputs["clip_loss"] = output['clip_loss'].item()
             outputs["loss"] += output['clip_loss']
 
@@ -141,12 +156,6 @@ class Harmony(torch.nn.Module):
                 loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
                 outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
                 outputs["loss"] += loss * self.meta["text_dist_weight"]
-
-        if self.is_discriminative:
-            output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
-
-            outputs["disc_loss"] = output["loss"].item() * self.meta["disc_weight"]
-            outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
 
         if self.is_generative:
             output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 

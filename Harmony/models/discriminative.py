@@ -95,7 +95,7 @@ class DiscriminativePath(nn.Module):
 
     def forward(self, images, epoch, masks):
         
-        teacher_output = self.teacher(images[:self.meta['global_crops_number']])
+        teacher_output, attn = self.teacher(images[:self.meta['global_crops_number']], return_attn=True)
 
         if 'dino' in self.meta['objective']:
             student_output = self.student(images)
@@ -125,6 +125,7 @@ class DiscriminativePath(nn.Module):
         #         )  # this is to display the same losses as before but we can remove eventually
 
         return {
+            "teacher_attn": attn,
             "teacher_output": teacher_output,
             "student_output": student_output,
             "loss": loss,
