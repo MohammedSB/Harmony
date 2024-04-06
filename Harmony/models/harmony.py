@@ -94,7 +94,7 @@ class Harmony(torch.nn.Module):
         if self.student == None:
             self.student = self.image_encoder
 
-        if (self.use_soft_labels and self.teacher == None) or (self.meta['attentive_masking'] and self.teacher != None):
+        if (self.use_soft_labels and self.teacher == None) or (self.meta['attentive_masking'] and self.teacher == None):
             print("Defining a image teacher encoder for soft labels or attentive masking")
             self.teacher = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],

@@ -45,12 +45,14 @@ class ContrastivePath(nn.Module):
                 attention_map = attention_map[0::2]
             else:
                 _, attention_map = teacher(images[indx], return_attn=True)
-            mask = get_att_mask_2(attention_map, ratio=0.5) 
+            mask = get_att_mask_2(attention_map, ratio=0.5)
+            remove_mask = True 
         else:
             mask = None
+            remove_mask = False
 
         text_embed = self.text_backbone(captions)
-        image_embed = self.image_backbone(images[indx], mask=mask, remove_mask=True, contrastive=True) 
+        image_embed = self.image_backbone(images[indx], mask=mask, remove_mask=remove_mask, contrastive=True) 
 
         if self.use_soft_labels and teacher:
             # TODO: do this in a better way
