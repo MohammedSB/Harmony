@@ -276,7 +276,7 @@ class VisionTransformer(nn.Module):
 
         attension = torch.stack(attension, dim=0)
         attension = torch.mean(attension, dim=0)
-        attension = attension[:, :, 0, 1:].mean(1).detach().clone()
+        attension = attension[:, :, 0, 1:].mean(1).detach()
 
         x = self.norm(x)
         if self.fc_norm is not None:

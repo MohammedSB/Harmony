@@ -75,7 +75,7 @@ def get_att_mask_2(attention, ratio=0.5):
 
     masks = torch.ones((bs, attention.shape[1]), dtype=torch.bool, device=attention.device)
     reservation = torch.argsort(attention, descending=True)
-    reservation = reservation[:,:N+1]
+    reservation = reservation[:,:N-1]
     masks = masks.scatter_(1, reservation, False)
 
     return masks

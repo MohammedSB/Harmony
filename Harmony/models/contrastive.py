@@ -19,8 +19,7 @@ class ContrastivePath(nn.Module):
 
         # define the text encoder and peripherals
         text_embed_dim = 512
-        vocab_size = 49408
-        vocab_size = vocab_size + 1 if self.meta['use_mlm'] else vocab_size 
+        vocab_size = 49409 # 49408 + mask id
         self.text_backbone = TextEncoder(embed_dim=text_embed_dim, vocab_size=vocab_size)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
