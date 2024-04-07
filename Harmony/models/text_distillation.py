@@ -30,6 +30,7 @@ class TextDistillationPath(torch.nn.Module):
             norm=self.meta['norm_in_head'],
             norm_last_layer=self.meta['norm_last_layer']
         ))
+        self.text_dist_teacher.load_state_dict(self.text_dist_student.state_dict(), strict=False)
         for param in self.text_dist_teacher.parameters():
             param.requires_grad = False
 

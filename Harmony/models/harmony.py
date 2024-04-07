@@ -101,6 +101,7 @@ class Harmony(torch.nn.Module):
                 return_all_tokens=False,
                 can_be_contrastive=True,
             )
+            self.teacher.load_state_dict(self.student.state_dict(), strict=False)
             for p in self.teacher.parameters():
                 p.requires_grad = False
             

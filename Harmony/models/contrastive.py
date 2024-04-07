@@ -27,6 +27,7 @@ class ContrastivePath(nn.Module):
         if self.use_soft_labels:
             print("Using soft labels!")
             self.text_backbone_teacher = TextEncoder(embed_dim=text_embed_dim, vocab_size=vocab_size)
+            self.text_backbone_teacher.load_state_dict(self.text_backbone.state_dict(), strict=False)
             for param in self.text_backbone_teacher.parameters():
                 param.requires_grad = False
 
