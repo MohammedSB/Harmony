@@ -35,9 +35,10 @@ from torch import nn
 from torchvision import datasets, transforms
 import torch.distributed as dist
 from PIL import ImageFilter, Image, ImageOps
-from Harmony.data import CC3M, ImageNet
+from Harmony.data import CC3M, ImageNet, YFCC15M
 
 dataset_classes = {
+        "YFCC15M": YFCC15M,
         "CC3M": CC3M,
         "IMAGENET": ImageNet
 }

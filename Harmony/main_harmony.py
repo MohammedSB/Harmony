@@ -304,7 +304,7 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'model': model.module.state_dict(),
+            'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
