@@ -6,12 +6,24 @@ import numpy as np
 from Harmony.data.utils import SimpleTokenizer
 from PIL import Image
 
+def get_files_from_root(directory):
+    f = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            f.append(file_path.split(os.sep)[-1].split(".")[0])
+    return f
+
 class YFCC15M(torch.utils.data.Dataset):
     def __init__(self, root, transform=None, tokneizer=SimpleTokenizer(), **kwargs):
         self.root = root
-        self.folders =  [f for f in os.scandir(root) if f.is_dir()]
-        self.image_captions = pd.read_csv(root + os.sep + "yfcc15m.csv")
-        self.image_captions = [tuple(x[2:]) for x in self.image_captions.to_numpy()]
+        
+        files = get_files_from_root(self.root + os.sep + "images")
+        self.df = pd.read_csv(root + os.sep + "yfcc15m.csv")
+        indices = self.df['1'].isin(files)
+        self.df = self.df[indices]
+        
+        self.image_captions = [tuple(x[2:]) for x in self.df.to_numpy()]
         self.transform = transform
         self.tokenizer = tokneizer
         print("Number of images loaded in YFCC15M are:", {self.__len__()})
