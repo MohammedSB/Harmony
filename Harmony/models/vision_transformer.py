@@ -237,8 +237,8 @@ class VisionTransformer(nn.Module):
         x = x + self.interpolate_pos_encoding(x, w, h)
 
         return self.pos_drop(x)
-    
-    def prepare_tokens_with_mask_removal(self, x, mask):
+        
+    def prepare_tokens_with_mask_removal(self, x, mask, random=False):
         B, nc, w, h = x.shape
 
         x = self.patch_embed(x)
@@ -248,10 +248,24 @@ class VisionTransformer(nn.Module):
         x = x + self.pos_embed[:, 1:]
 
         N, L, D = x.shape  # batch, length, dim
-        ids = torch.argsort(mask.long(), dim=1)  # ascend
-        mask_len = mask[0].sum()
-        ids_keep = ids[:, : L - mask_len]
-        x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+        if random:
+            len_keep = int(L * (1 - 0.5))
+
+            noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
+
+            # sort noise for each sample
+            ids_shuffle = torch.argsort(
+                noise, dim=1
+            )  # ascend: small is keep, large is remove
+
+            # keep the first subset
+            ids_keep = ids_shuffle[:, :len_keep]
+            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+        else:
+            ids = torch.argsort(mask.long(), dim=1)  # ascend
+            mask_len = mask[0].sum()
+            ids_keep = ids[:, : L - mask_len]
+            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
         cls_tokens = cls_tokens + self.pos_embed[:, 0]
@@ -259,11 +273,11 @@ class VisionTransformer(nn.Module):
 
         return x
 
-    def forward(self, x, return_all_tokens=None, mask=None, contrastive=False, return_attn=False, remove_mask=False):
+    def forward(self, x, return_all_tokens=None, mask=None, contrastive=False, return_attn=False, remove_mask=False, random=False):
         # mim
         attension = []
         if remove_mask:
-            x = self.prepare_tokens_with_mask_removal(x, mask)
+            x = self.prepare_tokens_with_mask_removal(x, mask, random)
         elif self.masked_im_modeling:
             assert mask is not None
             x = self.prepare_tokens(x, mask=mask)

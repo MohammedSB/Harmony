@@ -6,7 +6,7 @@ import torch.nn as nn
 from Harmony.models.vision_transformer import Block
 from Harmony.models.text_encoder import TextEncoder
 from Harmony.losses import CLIPLoss
-from .utils import get_att_mask, get_att_mask_2
+from .utils import get_att_mask, get_att_mask_2, random_masking
 
 class ContrastivePath(nn.Module):
     def __init__(self, image_backbone, meta, use_soft_labels):
@@ -32,7 +32,7 @@ class ContrastivePath(nn.Module):
                 param.requires_grad = False
 
         
-    def forward(self, images, captions, hard_weight, teacher=None, teacher_attn=None):
+    def forward(self, images, captions, hard_weight, teacher=None, teacher_attn=None, it=-3):
         # TODO: do this in a better way
         self.image_backbone.masked_im_modeling = False
         self.image_backbone.return_all_tokens = False
@@ -45,14 +45,19 @@ class ContrastivePath(nn.Module):
                 attention_map = attention_map[0::2]
             else:
                 _, attention_map = teacher(images[indx], return_attn=True)
+            if it % 10000 == 0:
+                print(attention_map)
             mask = get_att_mask_2(attention_map, ratio=0.5)
             remove_mask = True 
+        elif self.meta['random_masking']:
+            mask = None
+            remove_mask = True
         else:
             mask = None
             remove_mask = False
 
         text_embed = self.text_backbone(captions)
-        image_embed = self.image_backbone(images[indx], mask=mask, remove_mask=remove_mask, contrastive=True) 
+        image_embed = self.image_backbone(images[indx], mask=mask, remove_mask=remove_mask, contrastive=True, random=self.meta['random_masking']) 
 
         if self.use_soft_labels and teacher:
             # TODO: do this in a better way
