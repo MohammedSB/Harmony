@@ -248,7 +248,7 @@ class VisionTransformer(nn.Module):
         x = x + self.pos_embed[:, 1:]
 
         N, L, D = x.shape  # batch, length, dim
-        if random:
+        if random == True:
             len_keep = int(L * (1 - 0.5))
 
             noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]

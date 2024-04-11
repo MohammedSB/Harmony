@@ -32,7 +32,7 @@ class ContrastivePath(nn.Module):
                 param.requires_grad = False
 
         
-    def forward(self, images, captions, hard_weight, teacher=None, teacher_attn=None, it=-3):
+    def forward(self, images, captions, hard_weight, teacher=None, teacher_attn=None):
         # TODO: do this in a better way
         self.image_backbone.masked_im_modeling = False
         self.image_backbone.return_all_tokens = False
@@ -45,8 +45,6 @@ class ContrastivePath(nn.Module):
                 attention_map = attention_map[0::2]
             else:
                 _, attention_map = teacher(images[indx], return_attn=True)
-            if it % 10000 == 0:
-                print(attention_map)
             mask = get_att_mask_2(attention_map, ratio=0.5)
             remove_mask = True 
         elif self.meta['random_masking']:

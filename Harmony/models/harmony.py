@@ -129,7 +129,7 @@ class Harmony(torch.nn.Module):
                 teacher_attn = None
 
             hard_weight = self.hard_labels_weight_scheduler[iteration]
-            output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn, iteration)
+            output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
 
             if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss'].item()
             outputs["clip_loss"] = output['clip_loss'].item()
