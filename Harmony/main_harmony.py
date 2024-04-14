@@ -120,8 +120,8 @@ def get_args_parser():
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
     parser.add_argument('--disc_weight', type=float, default=1, help="""Loss scaling for discriminative path""")
     parser.add_argument('--gen_weight', type=float, default=1, help="""Loss scaling for generative path""")
-    parser.add_argument('--mlm_weight', type=float, default=0.1, help="""Loss scaling for mlm""")
-    parser.add_argument('--text_dist_weight', type=float, default=0.2, help="""Loss scaling for text distillation""")
+    parser.add_argument('--mlm_weight', type=float, default=1, help="""Loss scaling for mlm""")
+    parser.add_argument('--text_dist_weight', type=float, default=1, help="""Loss scaling for text distillation""")
     parser.add_argument('--weight_decay', type=float, default=0.04, help="""Initial value of the
         weight decay. With ViT, a smaller value at the beginning of training works well.""")
     parser.add_argument('--weight_decay_end', type=float, default=0.4, help="""Final value of the
