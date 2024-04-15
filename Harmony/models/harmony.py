@@ -154,19 +154,19 @@ class Harmony(torch.nn.Module):
                 
                 #outputs["mlm_loss"] = loss.item() * self.meta["mlm_weight"]
                 #outputs["loss"] += loss * self.meta["mlm_weight"]
-                outputs['losses']['mlm_loss'] = output["mlm_loss"]
+                outputs['losses']['mlm_loss'] = loss
 
             if self.meta['use_text_distillation']:
                 loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
                 #outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
                 #outputs["loss"] += loss * self.meta["text_dist_weight"]
-                outputs['losses']['text_dist_loss'] = output["text_dist_loss"]
+                outputs['losses']['text_dist_loss'] = loss
 
         if self.is_generative:
             output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 
      
             #outputs["gen_loss"] = output["loss"].item() * self.meta["gen_weight"]
             #outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
-            outputs['losses']['gen_loss'] = output["gen_loss"]
+            outputs['losses']['gen_loss'] = output["loss"]
 
         return outputs
