@@ -409,8 +409,8 @@ def train_one_epoch(model, data_loader,
             losses_n = {k: v.item() for k, v in model_output["losses"].items()}
             loss = sum(losses_n.values())
 
-        if not math.isfinite(loss.item()):
-            print("Loss is {}, stopping training".format(loss.item()), force=True)
+        if not math.isfinite(loss):
+            print("Loss is {}, stopping training".format(loss), force=True)
             sys.exit(1)
 
         # student update
@@ -426,11 +426,14 @@ def train_one_epoch(model, data_loader,
                                               args.freeze_last_layer)
             optimizer.step()
         else:
-            for obj_loss in enumerate(model_output["losses"].values()): 
+            for obj_loss in model_output["losses"].values(): 
                 fp16_scaler.scale(obj_loss).backward(retain_graph=True) 
+
+            # Destory graph forcefully
             model_output["losses"] = None
             torch.cuda.empty_cache()
             gc.collect()
+
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
@@ -455,12 +458,12 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss)
-        if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=losses_n["disc_loss"])
-        if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=losses_n["gen_loss"])
-        if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=losses_n["clip_loss"])
-        if 'soft_loss' in model_output.keys(): metric_logger.update(unscaled_soft_loss=losses_n['soft_loss'])
-        if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=losses_n['mlm_loss'])
-        if 'text_dist_loss' in model_output.keys(): metric_logger.update(text_dist_loss=losses_n['text_dist_loss'])
+        if 'disc_loss' in losses_n.keys(): metric_logger.update(discriminative_loss=losses_n["disc_loss"])
+        if 'gen_loss' in losses_n.keys(): metric_logger.update(generative_loss=losses_n["gen_loss"])
+        if 'clip_loss' in losses_n.keys(): metric_logger.update(clip_loss=losses_n["clip_loss"])
+        # if 'soft_loss' in losses_n.keys(): metric_logger.update(unscaled_soft_loss=losses_n['soft_loss'])
+        if 'mlm_loss' in losses_n.keys(): metric_logger.update(mlm_loss=losses_n['mlm_loss'])
+        if 'text_dist_loss' in losses_n.keys(): metric_logger.update(text_dist_loss=losses_n['text_dist_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])
