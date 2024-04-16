@@ -261,7 +261,9 @@ def train(args):
     # for mixed precision training
     fp16_scaler = None
     if args.use_fp16:
-        fp16_scaler = torch.cuda.amp.GradScaler()
+        fp16_scalers = []
+        for i in range(5):
+            fp16_scaler.append(torch.cuda.amp.GradScaler())
 
     # ============ init schedulers ... ============
     lr_schedule = utils.cosine_scheduler(
@@ -287,7 +289,7 @@ def train(args):
         run_variables=to_restore,
         model=model,
         optimizer=optimizer,
-        fp16_scaler=fp16_scaler,
+        fp16_scalers=fp16_scalers,
         disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
@@ -302,7 +304,7 @@ def train(args):
         # ============ training one epoch ... ============        
         train_stats, meta_training_data = train_one_epoch(model, data_loader, optimizer,
             lr_schedule, wd_schedule, momentum_schedule,
-            epoch, fp16_scaler, args, meta_training_data)
+            epoch, fp16_scalers, args, meta_training_data)
 
         # ============ writing logs ... ============
         save_dict = {
@@ -333,8 +335,8 @@ def train(args):
         else:
             main_text = None           
 
-        if fp16_scaler is not None:
-            save_dict['fp16_scaler'] = fp16_scaler.state_dict()
+        if len(fp16_scalers) > 0:
+            save_dict['fp16_scaler'] = fp16_scalers
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
         utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
         if main_text != None:
@@ -356,7 +358,7 @@ def train(args):
 
 def train_one_epoch(model, data_loader,
                     optimizer, lr_schedule, wd_schedule, momentum_schedule,epoch,
-                    fp16_scaler, args, meta_training_data=None):
+                    fp16_scalers, args, meta_training_data=None):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
 
@@ -404,10 +406,9 @@ def train_one_epoch(model, data_loader,
                 param_group["weight_decay"] = wd_schedule[it]
 
         # teacher and student forward passes + compute loss
-        with torch.cuda.amp.autocast(fp16_scaler is not None):
-            model_output = model(images, epoch, it, masks=masks, captions=captions)
-            losses_n = {k: v.item() for k, v in model_output["losses"].items()}
-            loss = sum(losses_n.values())
+        with torch.cuda.amp.autocast(args.use_fp16):
+            losses = model(images, epoch, it, masks=masks, captions=captions)
+            loss = sum(losses.values()).item()
 
         if not math.isfinite(loss):
             print("Loss is {}, stopping training".format(loss), force=True)
@@ -417,7 +418,7 @@ def train_one_epoch(model, data_loader,
         optimizer.zero_grad()
         param_norms = None
         student = model.module.student
-        if fp16_scaler is None:
+        if args.use_fp16:
             loss.backward()
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad)
@@ -426,22 +427,22 @@ def train_one_epoch(model, data_loader,
                                               args.freeze_last_layer)
             optimizer.step()
         else:
-            for obj_loss in model_output["losses"].values(): 
-                fp16_scaler.scale(obj_loss).backward(retain_graph=True) 
-
-            # Destory graph forcefully
-            model_output["losses"] = None
-            torch.cuda.empty_cache()
-            gc.collect()
+            scaled_loss = torch.tensor([0.0], device=args.gpu)
+            for i, obj_loss in enumerate(losses.values()): 
+                scaled_loss += fp16_scalers[i].scale(obj_loss)
+            scaled_loss.backward()
 
             if args.clip_grad:
-                fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+                fp16_scalers[0].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
             if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
-            fp16_scaler.step(optimizer)
-            fp16_scaler.update()
+                
+            for i, obj_loss in enumerate(losses.values()): 
+                fp16_scalers[i].step(optimizer)
+            for i, obj_loss in enumerate(losses.values()): 
+                fp16_scalers[i].update()    
 
         # EMA update for the teacher
         m = momentum_schedule[it]  # momentum parameter
@@ -458,12 +459,12 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss)
-        if 'disc_loss' in losses_n.keys(): metric_logger.update(discriminative_loss=losses_n["disc_loss"])
-        if 'gen_loss' in losses_n.keys(): metric_logger.update(generative_loss=losses_n["gen_loss"])
-        if 'clip_loss' in losses_n.keys(): metric_logger.update(clip_loss=losses_n["clip_loss"])
-        # if 'soft_loss' in losses_n.keys(): metric_logger.update(unscaled_soft_loss=losses_n['soft_loss'])
-        if 'mlm_loss' in losses_n.keys(): metric_logger.update(mlm_loss=losses_n['mlm_loss'])
-        if 'text_dist_loss' in losses_n.keys(): metric_logger.update(text_dist_loss=losses_n['text_dist_loss'])
+        if 'disc_loss' in losses.keys(): metric_logger.update(discriminative_loss=losses["disc_loss"].item())
+        if 'gen_loss' in losses.keys(): metric_logger.update(generative_loss=losses["gen_loss"].item())
+        if 'clip_loss' in losses.keys(): metric_logger.update(clip_loss=losses["clip_loss"].item())
+        if 'soft_loss' in losses.keys(): metric_logger.update(unscaled_soft_loss=losses['soft_loss'])
+        if 'mlm_loss' in losses.keys(): metric_logger.update(mlm_loss=losses['mlm_loss'].item())
+        if 'text_dist_loss' in losses.keys(): metric_logger.update(text_dist_loss=losses['text_dist_loss'].item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])
