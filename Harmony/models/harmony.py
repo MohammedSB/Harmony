@@ -131,9 +131,8 @@ class Harmony(torch.nn.Module):
             hard_weight = self.hard_labels_weight_scheduler[iteration]
             output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
 
-            if 'soft_loss' in output.keys(): losses['soft_loss'] = output['soft_loss'].item()
-            #outputs["clip_loss"] = output['clip_loss'].item()
-            #outputs["loss"] += output['clip_loss']
+            unscaled_soft_loss = 0
+            if 'soft_loss' in output.keys(): unscaled_soft_loss = output['soft_loss'].item()
             losses['clip_loss'] = output["clip_loss"]
 
             if self.meta['use_mlm'] or self.meta['use_text_distillation']:
@@ -168,4 +167,4 @@ class Harmony(torch.nn.Module):
             #outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
             losses['gen_loss'] = output["loss"]
 
-        return losses
+        return {losses, unscaled_soft_loss}

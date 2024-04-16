@@ -259,11 +259,11 @@ def train(args):
     elif args.optimizer == "lars":
         optimizer = utils.LARS(params_groups)  # to use with convnet and large batches
     # for mixed precision training
-    fp16_scaler = None
+    fp16_scalers = None
     if args.use_fp16:
         fp16_scalers = []
         for i in range(5):
-            fp16_scaler.append(torch.cuda.amp.GradScaler())
+            fp16_scalers.append(torch.cuda.amp.GradScaler())
 
     # ============ init schedulers ... ============
     lr_schedule = utils.cosine_scheduler(
@@ -407,7 +407,7 @@ def train_one_epoch(model, data_loader,
 
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(args.use_fp16):
-            losses = model(images, epoch, it, masks=masks, captions=captions)
+            losses, unscaled_soft_loss = model(images, epoch, it, masks=masks, captions=captions)
             loss = sum(losses.values()).item()
 
         if not math.isfinite(loss):
@@ -418,7 +418,7 @@ def train_one_epoch(model, data_loader,
         optimizer.zero_grad()
         param_norms = None
         student = model.module.student
-        if args.use_fp16:
+        if not args.use_fp16:
             loss.backward()
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad)
@@ -462,7 +462,7 @@ def train_one_epoch(model, data_loader,
         if 'disc_loss' in losses.keys(): metric_logger.update(discriminative_loss=losses["disc_loss"].item())
         if 'gen_loss' in losses.keys(): metric_logger.update(generative_loss=losses["gen_loss"].item())
         if 'clip_loss' in losses.keys(): metric_logger.update(clip_loss=losses["clip_loss"].item())
-        if 'soft_loss' in losses.keys(): metric_logger.update(unscaled_soft_loss=losses['soft_loss'])
+        if unscaled_soft_loss != 0: metric_logger.update(unscaled_soft_loss=unscaled_soft_loss)
         if 'mlm_loss' in losses.keys(): metric_logger.update(mlm_loss=losses['mlm_loss'].item())
         if 'text_dist_loss' in losses.keys(): metric_logger.update(text_dist_loss=losses['text_dist_loss'].item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
