@@ -36,6 +36,7 @@ import Harmony.utils as utils
 from Harmony.utils import DataAugmentation, get_dataset_from_string
 from Harmony.models import Harmony
 from Harmony.data import IBOTLoaderWrapper
+from torch.cuda.amp.grad_scaler import OptState
 
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -432,15 +433,22 @@ def train_one_epoch(model, data_loader,
                 scaled_loss += fp16_scalers[i].scale(obj_loss)
             scaled_loss.backward()
 
+            for i in range(1, len(losses)): 
+                fp16_scalers[i]._per_optimizer_states[id(optimizer)]['stage'] = OptState.UNSCALED 
+
+            fp16_scalers[0].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+
             if args.clip_grad:
-                fp16_scalers[0].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
             if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
                 
-            for i, obj_loss in enumerate(losses.values()): 
-                fp16_scalers[i].step(optimizer)
+            fp16_scalers[0].step(optimizer)
+
+            for i in range(1, len(losses)): 
+                fp16_scalers[i]._check_inf_per_device(optimizer)
+            
             for i, obj_loss in enumerate(losses.values()): 
                 fp16_scalers[i].update()    
 

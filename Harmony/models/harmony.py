@@ -167,4 +167,4 @@ class Harmony(torch.nn.Module):
             #outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
             losses['gen_loss'] = output["loss"]
 
-        return {losses, unscaled_soft_loss}
+        return losses, unscaled_soft_loss
