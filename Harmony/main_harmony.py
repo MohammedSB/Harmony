@@ -20,6 +20,7 @@ import math
 import json
 import pickle
 from pathlib import Path
+from collections import OrderedDict
 import gc
 
 import numpy as np
@@ -262,9 +263,11 @@ def train(args):
     # for mixed precision training
     fp16_scalers = None
     if args.use_fp16:
-        fp16_scalers = []
-        for i in range(5):
-            fp16_scalers.append(torch.cuda.amp.GradScaler())
+        fp16_scalers = {"gen_loss": torch.cuda.amp.GradScaler(growth_interval=200),
+                        "disc_loss": torch.cuda.amp.GradScaler(),
+                        "clip_loss": torch.cuda.amp.GradScaler(),
+                        "mlm_loss": torch.cuda.amp.GradScaler(),
+                        "text_dist_loss": torch.cuda.amp.GradScaler()}
 
     # ============ init schedulers ... ============
     lr_schedule = utils.cosine_scheduler(
@@ -427,30 +430,31 @@ def train_one_epoch(model, data_loader,
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
             optimizer.step()
-        else:
-            scaled_loss = torch.tensor([0.0], device=args.gpu)
-            for i, obj_loss in enumerate(losses.values()): 
-                scaled_loss += fp16_scalers[i].scale(obj_loss)
+        else:   
+            keys = fp16_scalers.keys()
+            with torch.cuda.amp.autocast():
+                scaled_loss = torch.tensor([0.0], device=args.gpu)
+                for k, v in enumerate(losses.items()): 
+                    scaled_loss += fp16_scalers[k].scale(v) 
             scaled_loss.backward()
 
-            for i in range(1, len(losses)): 
-                fp16_scalers[i]._per_optimizer_states[id(optimizer)]['stage'] = OptState.UNSCALED 
+            for k in keys[1:]: 
+                fp16_scalers[k]._per_optimizer_states[id(optimizer)]['stage'] = OptState.UNSCALED 
 
-            fp16_scalers[0].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+            fp16_scalers[keys[0]].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
 
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad)
             if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
-                
-            fp16_scalers[0].step(optimizer)
+            fp16_scalers[keys[0]].step(optimizer)
 
-            for i in range(1, len(losses)): 
-                fp16_scalers[i]._check_inf_per_device(optimizer)
+            for k in keys[1:]:
+                fp16_scalers[k]._check_inf_per_device(optimizer)
             
-            for i, obj_loss in enumerate(losses.values()): 
-                fp16_scalers[i].update()    
+            for k in keys:
+                fp16_scalers[k].update()    
 
         # EMA update for the teacher
         m = momentum_schedule[it]  # momentum parameter

@@ -107,6 +107,7 @@ class Harmony(torch.nn.Module):
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
         losses = {}
+        unscaled_soft_loss = 0
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
@@ -131,7 +132,6 @@ class Harmony(torch.nn.Module):
             hard_weight = self.hard_labels_weight_scheduler[iteration]
             output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
 
-            unscaled_soft_loss = 0
             if 'soft_loss' in output.keys(): unscaled_soft_loss = output['soft_loss'].item()
             losses['clip_loss'] = output["clip_loss"]
 
