@@ -255,6 +255,7 @@ def train(args):
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
     if args.optimizer == "adamw":
+        # optimizer = torch.optim.AdamW(params_groups, eps=1e-04)  # to use with ViTs
         optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
     elif args.optimizer == "sgd":
         optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
@@ -293,7 +294,7 @@ def train(args):
         run_variables=to_restore,
         model=model,
         optimizer=optimizer,
-        fp16_scalers=fp16_scalers,
+        # fp16_scalers=fp16_scalers,
         disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
@@ -339,8 +340,8 @@ def train(args):
         else:
             main_text = None           
 
-        if len(fp16_scalers) > 0:
-            save_dict['fp16_scaler'] = fp16_scalers
+        # if len(fp16_scalers) > 0:
+        #    save_dict['fp16_scaler'] = fp16_scalers
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
         utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
         if main_text != None:
@@ -431,10 +432,10 @@ def train_one_epoch(model, data_loader,
                                               args.freeze_last_layer)
             optimizer.step()
         else:   
-            keys = fp16_scalers.keys()
+            keys = list(fp16_scalers.keys())
             with torch.cuda.amp.autocast():
                 scaled_loss = torch.tensor([0.0], device=args.gpu)
-                for k, v in enumerate(losses.items()): 
+                for k, v in losses.items(): 
                     scaled_loss += fp16_scalers[k].scale(v) 
             scaled_loss.backward()
 
@@ -450,10 +451,10 @@ def train_one_epoch(model, data_loader,
                                               args.freeze_last_layer)
             fp16_scalers[keys[0]].step(optimizer)
 
-            for k in keys[1:]:
+            for k in losses.keys():
                 fp16_scalers[k]._check_inf_per_device(optimizer)
             
-            for k in keys:
+            for k in losses.keys():
                 fp16_scalers[k].update()    
 
         # EMA update for the teacher
