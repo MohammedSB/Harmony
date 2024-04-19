@@ -255,8 +255,7 @@ def train(args):
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
     if args.optimizer == "adamw":
-        # optimizer = torch.optim.AdamW(params_groups, eps=1e-04)  # to use with ViTs
-        optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
+        optimizer = torch.optim.AdamW(params_groups, eps=1e-06, betas=(0.9, 0.99))  # to use with ViTs
     elif args.optimizer == "sgd":
         optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
     elif args.optimizer == "lars":
@@ -264,7 +263,7 @@ def train(args):
     # for mixed precision training
     fp16_scalers = None
     if args.use_fp16:
-        fp16_scalers = {"gen_loss": torch.cuda.amp.GradScaler(growth_interval=200),
+        fp16_scalers = {"gen_loss": torch.cuda.amp.GradScaler(),
                         "disc_loss": torch.cuda.amp.GradScaler(),
                         "clip_loss": torch.cuda.amp.GradScaler(),
                         "mlm_loss": torch.cuda.amp.GradScaler(),
