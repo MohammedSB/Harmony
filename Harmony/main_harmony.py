@@ -66,7 +66,7 @@ def get_args_parser():
         the same head for [CLS] token output and patch tokens output. When set to false, patch_out_dim
         is ignored and enforced to be same with out_dim. (Default: False)""")
     parser.add_argument('--shared_head_teacher', default=True, type=utils.bool_flag, help="""See above.
-        Only works for teacher model. (Defeault: True)""")
+        Only works for teacher model.module. (Defeault: True)""")
     parser.add_argument('--norm_last_layer', default=True, type=utils.bool_flag,
         help="""Whether or not to weight normalize the last layer of the DINO head.
         Not normalizing leads to better performance but can make the training unstable.
@@ -250,7 +250,7 @@ def train(args):
     }
 
     model = Harmony(args=args, meta_training_data=meta_training_data).to(args.gpu)
-    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -296,7 +296,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         # fp16_scalers=fp16_scalers,
-        disc_loss=model.discriminative_path.loss if model.is_discriminative else None
+        disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
 
@@ -314,30 +314,30 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'model': model.state_dict(),
+            'model': model.module.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            'disc_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
+            'disc_loss': model.module.discriminative_path.loss.state_dict() if model.module.is_discriminative else None,
         }
 
         # saving teacher vit separately
         try: # yes I am lazy
-            main_vit = model.teacher.backbone.state_dict() # if it has ibot/dino head, remove it
+            main_vit = model.module.teacher.backbone.state_dict() # if it has ibot/dino head, remove it
         except:
             try:
-                main_vit = model.teacher.state_dict()
+                main_vit = model.module.teacher.state_dict()
             except:
-                main_vit = model.student.state_dict()
+                main_vit = model.module.student.state_dict()
 
-        if model.text_teacher != None or model.text_student != None:
+        if model.module.text_teacher != None or model.module.text_student != None:
             try:
-                main_text = model.text_teacher.backbone.state_dict() # if it has text dist head, remove it
+                main_text = model.module.text_teacher.backbone.state_dict() # if it has text dist head, remove it
             except:
                 try:
-                    main_text = model.text_teacher.state_dict()
+                    main_text = model.module.text_teacher.state_dict()
                 except:
-                    main_text = model.text_student.state_dict()
+                    main_text = model.module.text_student.state_dict()
         else:
             main_text = None           
 
@@ -371,19 +371,19 @@ def train_one_epoch(model, data_loader,
     # common params
     names_q, params_q, names_k, params_k = [], [], [], []
     names_tq, params_tq, names_tk, params_tk = [], [], [], []
-    if model.teacher != None:
-        for name_q, param_q in model.student.named_parameters():
+    if model.module.teacher != None:
+        for name_q, param_q in model.module.student.named_parameters():
             names_q.append(name_q)
             params_q.append(param_q)
-        for name_k, param_k in model.teacher.named_parameters():
+        for name_k, param_k in model.module.teacher.named_parameters():
             names_k.append(name_k)
             params_k.append(param_k)
 
-    if model.text_teacher != None:
-        for name_tq, param_tq in model.text_student.named_parameters():
+    if model.module.text_teacher != None:
+        for name_tq, param_tq in model.module.text_student.named_parameters():
             names_tq.append(name_tq)
             params_tq.append(param_tq)
-        for name_tk, param_tk in model.text_teacher.named_parameters():
+        for name_tk, param_tk in model.module.text_teacher.named_parameters():
             names_tk.append(name_tk)
             params_tk.append(param_tk)
 
@@ -423,12 +423,12 @@ def train_one_epoch(model, data_loader,
         # student update
         optimizer.zero_grad()
         param_norms = None
-        student = model.student
+        student = model.module.student
         if not args.use_fp16:
             loss.backward()
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad)
-            if model.is_discriminative:
+            if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
             optimizer.step()
@@ -440,32 +440,36 @@ def train_one_epoch(model, data_loader,
                     scaled_loss += fp16_scalers[k].scale(v) 
             scaled_loss.backward()
 
-            for k in keys[1:]: 
-                fp16_scalers[k]._per_optimizer_states[id(optimizer)]['stage'] = OptState.UNSCALED 
+            # for k in keys[1:]: 
+            #     fp16_scalers[k]._per_optimizer_states[id(optimizer)]['stage'] = OptState.UNSCALED 
 
-            fp16_scalers[keys[0]].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+            for k in losses.keys():
+                fp16_scalers[k].unscale_(optimizer)
+
+            # fp16_scalers[keys[0]].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
 
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad)
-            if model.is_discriminative:
+            if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
+                
             fp16_scalers[keys[0]].step(optimizer)
 
-            for k in losses.keys():
-                fp16_scalers[k]._check_inf_per_device(optimizer)
+            # for k in losses.keys():
+            #     fp16_scalers[k]._check_inf_per_device(optimizer)
             
             for k in losses.keys():
                 fp16_scalers[k].update()    
 
         # EMA update for the teacher
         m = momentum_schedule[it]  # momentum parameter
-        if model.teacher != None:
+        if model.module.teacher != None:
             with torch.no_grad():
                 for param_q, param_k in zip(params_q, params_k):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
         
-        if model.text_teacher != None:
+        if model.module.text_teacher != None:
             with torch.no_grad():
                 for param_tq, param_tk in zip(params_tq, params_tk):
                     param_tk.data.mul_(m).add_((1 - m) * param_tq.detach().data)
@@ -481,8 +485,8 @@ def train_one_epoch(model, data_loader,
         if 'text_dist_loss' in losses.keys(): metric_logger.update(text_dist_loss=losses['text_dist_loss'].item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
-        if model.is_contrastive: metric_logger.update(clip_hard_weight=model.hard_labels_weight_scheduler[it])
-        if model.is_generative: metric_logger.update(mask_ratio=round(model.mask_ratio_scheduler[it], 2))    
+        if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])
+        if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[it], 2))    
     
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
