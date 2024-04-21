@@ -261,15 +261,14 @@ def train(args):
     elif args.optimizer == "lars":
         optimizer = utils.LARS(params_groups)  # to use with convnet and large batches
     # for mixed precision training
-    fp16_scalers = None
+    fp16_scaler = None
     if args.use_fp16:
-        fp16_scalers = {
-            "clip_loss": torch.cuda.amp.GradScaler(),
-            "gen_loss": torch.cuda.amp.GradScaler(),
-            "disc_loss": torch.cuda.amp.GradScaler(),
-            "mlm_loss": torch.cuda.amp.GradScaler(),
-            "text_dist_loss": torch.cuda.amp.GradScaler()
-            }
+        fp16_scaler = torch.cuda.amp.GradScaler()
+        # fp16_scalers = {"gen_loss": torch.cuda.amp.GradScaler(),
+        #                 "disc_loss": torch.cuda.amp.GradScaler(),
+        #                 "clip_loss": torch.cuda.amp.GradScaler(),
+        #                 "mlm_loss": torch.cuda.amp.GradScaler(),
+        #                 "text_dist_loss": torch.cuda.amp.GradScaler()}
 
     # ============ init schedulers ... ============
     lr_schedule = utils.cosine_scheduler(
@@ -310,7 +309,7 @@ def train(args):
         # ============ training one epoch ... ============        
         train_stats, meta_training_data = train_one_epoch(model, data_loader, optimizer,
             lr_schedule, wd_schedule, momentum_schedule,
-            epoch, fp16_scalers, args, meta_training_data)
+            epoch, fp16_scaler, args, meta_training_data)
 
         # ============ writing logs ... ============
         save_dict = {
@@ -364,7 +363,7 @@ def train(args):
 
 def train_one_epoch(model, data_loader,
                     optimizer, lr_schedule, wd_schedule, momentum_schedule,epoch,
-                    fp16_scalers, args, meta_training_data=None):
+                    fp16_scaler, args, meta_training_data=None):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
 
@@ -413,8 +412,10 @@ def train_one_epoch(model, data_loader,
 
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(args.use_fp16):
-            losses, unscaled_soft_loss = model(images, epoch, it, masks=masks, captions=captions)
-            loss = sum(losses.values()).item()
+            model_output = model(images, epoch, it, masks=masks, captions=captions)
+            loss = model_output["loss"]
+            # losses, unscaled_soft_loss = model(images, epoch, it, masks=masks, captions=captions)
+            # loss = sum(losses.values()).item()
 
         if not math.isfinite(loss):
             print("Loss is {}, stopping training".format(loss), force=True)
@@ -433,34 +434,15 @@ def train_one_epoch(model, data_loader,
                                               args.freeze_last_layer)
             optimizer.step()
         else:   
-            keys = list(fp16_scalers.keys())
-            with torch.cuda.amp.autocast():
-                scaled_loss = torch.tensor([0.0], device=args.gpu)
-                for k, v in losses.items(): 
-                    scaled_loss += fp16_scalers[k].scale(v) 
-            scaled_loss.backward()
-
-            # for k in keys[1:]: 
-            #     fp16_scalers[k]._per_optimizer_states[id(optimizer)]['stage'] = OptState.UNSCALED 
-
-            for k in losses.keys():
-                fp16_scalers[k].unscale_(optimizer)
-
-            # fp16_scalers[keys[0]].unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-
+            fp16_scaler.scale(loss).backward()
             if args.clip_grad:
+                fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
             if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
-                
-            fp16_scalers[keys[0]].step(optimizer)
-
-            # for k in losses.keys():
-            #     fp16_scalers[k]._check_inf_per_device(optimizer)
-            
-            for k in losses.keys():
-                fp16_scalers[k].update()    
+            fp16_scaler.step(optimizer)
+            fp16_scaler.update()  
 
         # EMA update for the teacher
         m = momentum_schedule[it]  # momentum parameter
@@ -477,12 +459,18 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss)
-        if 'disc_loss' in losses.keys(): metric_logger.update(discriminative_loss=losses["disc_loss"].item())
-        if 'gen_loss' in losses.keys(): metric_logger.update(generative_loss=losses["gen_loss"].item())
-        if 'clip_loss' in losses.keys(): metric_logger.update(clip_loss=losses["clip_loss"].item())
-        if unscaled_soft_loss != 0: metric_logger.update(unscaled_soft_loss=unscaled_soft_loss)
-        if 'mlm_loss' in losses.keys(): metric_logger.update(mlm_loss=losses['mlm_loss'].item())
-        if 'text_dist_loss' in losses.keys(): metric_logger.update(text_dist_loss=losses['text_dist_loss'].item())
+        # if 'disc_loss' in losses.keys(): metric_logger.update(discriminative_loss=losses["disc_loss"].item())
+        # if 'gen_loss' in losses.keys(): metric_logger.update(generative_loss=losses["gen_loss"].item())
+        # if 'clip_loss' in losses.keys(): metric_logger.update(clip_loss=losses["clip_loss"].item())
+        # if unscaled_soft_loss != 0: metric_logger.update(unscaled_soft_loss=unscaled_soft_loss)
+        # if 'mlm_loss' in losses.keys(): metric_logger.update(mlm_loss=losses['mlm_loss'].item())
+        # if 'text_dist_loss' in losses.keys(): metric_logger.update(text_dist_loss=losses['text_dist_loss'].item())
+        if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=model_output["disc_loss"])
+        if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=model_output["gen_loss"])
+        if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])
+        if 'soft_loss' in model_output.keys(): metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
+        if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=model_output['mlm_loss'])
+        if 'text_dist_loss' in model_output.keys(): metric_logger.update(text_dist_loss=model_output['text_dist_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])
@@ -492,7 +480,6 @@ def train_one_epoch(model, data_loader,
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, meta_training_data
-    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('HARMONY', parents=[get_args_parser()])

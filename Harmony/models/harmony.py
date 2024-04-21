@@ -106,15 +106,14 @@ class Harmony(torch.nn.Module):
                 p.requires_grad = False
             
     def forward(self, images, epoch, iteration, captions=None, masks=None):
-        losses = {}
-        unscaled_soft_loss = 0
+        loss = torch.tensor([0.0]).to(self.meta['gpu'])
+        outputs = {"loss": loss}
 
         if self.is_discriminative:
             output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
 
-            #outputs["disc_loss"] = output["loss"].item() * self.meta["disc_weight"]
-            #outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
-            losses['disc_loss'] = output["loss"]
+            outputs["disc_loss"] = output["loss"].item() * self.meta["disc_weight"]
+            outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
         
         if self.is_contrastive:
 
@@ -132,8 +131,9 @@ class Harmony(torch.nn.Module):
             hard_weight = self.hard_labels_weight_scheduler[iteration]
             output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
 
-            if 'soft_loss' in output.keys(): unscaled_soft_loss = output['soft_loss'].item()
-            losses['clip_loss'] = output["clip_loss"]
+            if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss'].item()
+            outputs["clip_loss"] = output['clip_loss'].item()
+            outputs["loss"] += output['clip_loss']
 
             if self.meta['use_mlm'] or self.meta['use_text_distillation']:
                 labels = captions.detach().clone()
@@ -150,21 +150,22 @@ class Harmony(torch.nn.Module):
                 if torch.isnan(loss):
                     loss = torch.tensor(0.0) 
                 
-                #outputs["mlm_loss"] = loss.item() * self.meta["mlm_weight"]
-                #outputs["loss"] += loss * self.meta["mlm_weight"]
-                losses['mlm_loss'] = loss
+                outputs["mlm_loss"] = loss.item() * self.meta["mlm_weight"]
+                outputs["loss"] += loss * self.meta["mlm_weight"]
 
             if self.meta['use_text_distillation']:
                 loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
-                #outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
-                #outputs["loss"] += loss * self.meta["text_dist_weight"]
-                losses['text_dist_loss'] = loss
+                outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
+
+                if torch.isnan(loss):
+                    loss = torch.tensor(0.0) 
+
+                outputs["loss"] += loss * self.meta["text_dist_weight"]
 
         if self.is_generative:
             output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 
      
-            #outputs["gen_loss"] = output["loss"].item() * self.meta["gen_weight"]
-            #outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
-            losses['gen_loss'] = output["loss"]
+            outputs["gen_loss"] = output["loss"].item() * self.meta["gen_weight"]
+            outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
 
-        return losses, unscaled_soft_loss
+        return outputs
