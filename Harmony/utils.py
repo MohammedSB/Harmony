@@ -715,10 +715,8 @@ class MultiCropWrapper(nn.Module):
             if start_idx == 0:
                 output = _out
                 attn = _attn # only get attention for first view
-                # print(_attn.shape)
             else:
                 output = torch.cat((output, _out))
-                # attn = torch.cat((attn, _attn)) 
             start_idx = end_idx
         # Run the head forward on the concatenated features.
         output_ = self.head(output)

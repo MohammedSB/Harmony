@@ -255,7 +255,7 @@ def train(args):
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
     if args.optimizer == "adamw":
-        optimizer = torch.optim.AdamW(params_groups, eps=1e-06, betas=(0.9, 0.99))  # to use with ViTs
+        optimizer = torch.optim.AdamW(params_groups, eps=1e-06, betas=(0.9, 0.999))  # to use with ViTs
     elif args.optimizer == "sgd":
         optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
     elif args.optimizer == "lars":
@@ -264,11 +264,6 @@ def train(args):
     fp16_scaler = None
     if args.use_fp16:
         fp16_scaler = torch.cuda.amp.GradScaler()
-        # fp16_scalers = {"gen_loss": torch.cuda.amp.GradScaler(),
-        #                 "disc_loss": torch.cuda.amp.GradScaler(),
-        #                 "clip_loss": torch.cuda.amp.GradScaler(),
-        #                 "mlm_loss": torch.cuda.amp.GradScaler(),
-        #                 "text_dist_loss": torch.cuda.amp.GradScaler()}
 
     # ============ init schedulers ... ============
     lr_schedule = utils.cosine_scheduler(
@@ -294,7 +289,7 @@ def train(args):
         run_variables=to_restore,
         model=model,
         optimizer=optimizer,
-        # fp16_scalers=fp16_scalers,
+        fp16_scaler=fp16_scaler,
         disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
@@ -330,9 +325,10 @@ def train(args):
                 main_vit = model.module.student.state_dict()
 
         if model.module.text_teacher != None or model.module.text_student != None:
-            try:
+            if args.use_text_distillation:
+                # print(model.module.text_teacher.state_dict().keys())
                 main_text = model.module.text_teacher.backbone.state_dict() # if it has text dist head, remove it
-            except:
+            else:
                 try:
                     main_text = model.module.text_teacher.state_dict()
                 except:
@@ -340,8 +336,8 @@ def train(args):
         else:
             main_text = None           
 
-        # if len(fp16_scalers) > 0:
-        #    save_dict['fp16_scaler'] = fp16_scalers
+        if fp16_scaler != None:
+           save_dict['fp16_scaler'] = fp16_scaler.state_dict()
         utils.save_on_master(save_dict, os.path.join(args.output_dir, 'checkpoint.pth'))
         utils.save_on_master(main_vit, os.path.join(args.output_dir, 'main_vit_checkpoint.pth'))
         if main_text != None:
@@ -428,7 +424,7 @@ def train_one_epoch(model, data_loader,
         if not args.use_fp16:
             loss.backward()
             if args.clip_grad:
-                param_norms = utils.clip_gradients(student, args.clip_grad)
+                param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.module.
             if model.module.is_discriminative:
                 utils.cancel_gradients_last_layer(epoch, student,
                                               args.freeze_last_layer)
@@ -459,12 +455,6 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss)
-        # if 'disc_loss' in losses.keys(): metric_logger.update(discriminative_loss=losses["disc_loss"].item())
-        # if 'gen_loss' in losses.keys(): metric_logger.update(generative_loss=losses["gen_loss"].item())
-        # if 'clip_loss' in losses.keys(): metric_logger.update(clip_loss=losses["clip_loss"].item())
-        # if unscaled_soft_loss != 0: metric_logger.update(unscaled_soft_loss=unscaled_soft_loss)
-        # if 'mlm_loss' in losses.keys(): metric_logger.update(mlm_loss=losses['mlm_loss'].item())
-        # if 'text_dist_loss' in losses.keys(): metric_logger.update(text_dist_loss=losses['text_dist_loss'].item())
         if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=model_output["disc_loss"])
         if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=model_output["gen_loss"])
         if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])

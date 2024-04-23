@@ -155,11 +155,8 @@ class Harmony(torch.nn.Module):
 
             if self.meta['use_text_distillation']:
                 loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
+
                 outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
-
-                if torch.isnan(loss):
-                    loss = torch.tensor(0.0) 
-
                 outputs["loss"] += loss * self.meta["text_dist_weight"]
 
         if self.is_generative:

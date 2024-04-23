@@ -16,7 +16,7 @@ class TextDistillationPath(torch.nn.Module):
             norm=self.meta['norm_in_head'],
             norm_last_layer=self.meta['norm_last_layer']
         ))
-        if text_teacher !=None : # check if we have a teacher backbone from contrastive path
+        if text_teacher != None : # check if we have a teacher backbone from contrastive path
             print("Using teacher backbone from contrastive path in text self-dist")
             text_dist_teacher = text_teacher
         else:
