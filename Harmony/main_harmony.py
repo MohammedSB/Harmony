@@ -410,8 +410,6 @@ def train_one_epoch(model, data_loader,
         with torch.cuda.amp.autocast(args.use_fp16):
             model_output = model(images, epoch, it, masks=masks, captions=captions)
             loss = model_output["loss"]
-            # losses, unscaled_soft_loss = model(images, epoch, it, masks=masks, captions=captions)
-            # loss = sum(losses.values()).item()
 
         if not math.isfinite(loss):
             print("Loss is {}, stopping training".format(loss), force=True)
@@ -454,7 +452,7 @@ def train_one_epoch(model, data_loader,
 
         # logging
         torch.cuda.synchronize()
-        metric_logger.update(loss=loss)
+        metric_logger.update(loss=loss.item())
         if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=model_output["disc_loss"])
         if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=model_output["gen_loss"])
         if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])
