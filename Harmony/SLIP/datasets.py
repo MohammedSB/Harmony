@@ -107,7 +107,7 @@ class ImageCaptionDatasetBase(torch.utils.data.Dataset):
         raise NotImplementedError
 
     def __len__(self):
-        return 5
+        return len(self.images)
 
 
 class ImageCaptionDatasetCLIP(ImageCaptionDatasetBase):
