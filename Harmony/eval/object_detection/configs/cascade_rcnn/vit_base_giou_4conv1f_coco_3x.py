@@ -138,15 +138,8 @@ optimizer = dict(_delete_=True, type='AdamW', lr=0.0001, betas=(0.9, 0.999), wei
                  constructor='LayerDecayOptimizerConstructor', 
                  paramwise_cfg=dict(num_layers=12, layer_decay_rate=0.65))
 
-# lr_config = dict(step=[27, 33])
-# runner = dict(type='EpochBasedRunnerAmp', max_epochs=36)
-lr_config = dict(
-    policy='step',
-    warmup='linear',
-    warmup_iters=500,
-    warmup_ratio=0.001,
-    step=[8, 11])
-runner = dict(type='EpochBasedRunnerAmp', max_epochs=12)
+lr_config = dict(step=[27, 33])
+runner = dict(type='EpochBasedRunnerAmp', max_epochs=36)
 
 # do not use mmdet version fp16
 fp16 = None
