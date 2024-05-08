@@ -40,6 +40,7 @@ from Harmony.data import CC3M, ImageNet, YFCC15M
 dataset_classes = {
         "YFCC15M": YFCC15M,
         "CC3M": CC3M,
+        # "CALTECH101": datasets.Caltech101,
         "IMAGENET": ImageNet
 }
 

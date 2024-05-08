@@ -12,7 +12,7 @@ import torch.utils.checkpoint as checkpoint
 from mmcv_custom import load_checkpoint
 from mmdet.utils import get_root_logger
 from mmdet.models.builder import BACKBONES
-from Harmony.models import VisionTransformer
+from Harmony.models.vision_transformer import VisionTransformer
 
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding

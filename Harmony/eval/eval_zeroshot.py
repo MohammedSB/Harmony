@@ -77,14 +77,19 @@ def main(args):
 
     results = {}
     for d in catalog:
-        if d.upper() not in dataset_classes:
+        dataset_name = d.upper()
+        if dataset_name not in dataset_classes:
             continue
         print('Evaluating {}'.format(d))
         # val_dataset = datasets.get_downstream_dataset(catalog, name=d, is_train=False, transform=val_transform)
-        data_root = catalog[d]['path']
-        # data_root = args.data.split(":")[1]
-        data = get_dataset_from_string(d + ":" + d)
-        val_dataset = data(data_root + f"{os.sep}val", transform=val_transform, split="val")
+        entry = catalog[d]
+        data_root = entry['path']
+
+        if dataset_name == "IMAGENET":
+            data = get_dataset_from_string(d + ":" + d)
+            val_dataset = data(data_root + f"{os.sep}val", transform=val_transform, split="val")
+        elif entry['type'] == 'imagefolder':
+            val_dataset = dataset_classes[dataset_name](root=os.path.join(data_root, entry['test']), download=True, transform=val_transform)
 
         val_loader = torch.utils.data.DataLoader(
             val_dataset, batch_size=args.batch_size, shuffle=False,

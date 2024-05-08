@@ -113,7 +113,7 @@ def get_args_parser():
         `--warmup_teacher_temp`""")
     parser.add_argument('--teacher_patch_temp', default=0.07, type=float, help=""""See 
         `--teacher_temp`""")
-    parser.add_argument('--warmup_teacher_temp_epochs', default=0, type=int,
+    parser.add_argument('--warmup_teacher_temp_epochs', default=10, type=int,
         help='Number of warmup epochs for the teacher temperature (Default: 30).')
 
     # Training/Optimization parameters
