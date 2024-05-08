@@ -125,7 +125,7 @@ def main():
     if args.launcher == 'none':
         distributed = False
     else:
-        cfg.dist_params['backend'] = "gloo"
+        cfg.dist_params['backend'] = "nccl"
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
         # re-set gpu_ids with distributed training mode
