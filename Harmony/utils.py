@@ -35,44 +35,8 @@ from torch import nn
 from torchvision import datasets, transforms
 import torch.distributed as dist
 from PIL import ImageFilter, Image, ImageOps
-from Harmony.data import CC3M, ImageNet, YFCC15M
 
-dataset_classes = {
-        "YFCC15M": YFCC15M,
-        "CC3M": CC3M,
-        "CALTECH101": "",
-        "MNIST": datasets.MNIST,
-        "STL10": datasets.STL10,
-        "CIFAR10": datasets.CIFAR10,
-        "CIFAR100": datasets.CIFAR100,
-        "FOOD101": datasets.Food101,
-        "EUROSAT": datasets.EuroSAT,
-        "DTD": datasets.DTD,
-        "GTSRB": datasets.GTSRB,
-        "FER2013": datasets.FER2013,
-        "COUNTRY211": datasets.Country211,
-        "AIRCRAFT": datasets.FGVCAircraft,
-        "PETS": datasets.OxfordIIITPet,
-        "KITTI_DISTANCE": datasets.Kitti,
-        "FLOWERS": datasets.Flowers102,
-        "RENDERED_SST2": datasets.RenderedSST2,
-        "CARS": datasets.StanfordCars,
-        "IMAGENET": ImageNet
-}
 
-# dataset_classes = {
-#         "CC3M": CC3M,
-#         "IMAGENET": ImageNet,
-#         ,
-        
-        # "MEMES": datasets.HatefulMemes,
-#         
-        
-        
-#         # "
-        
-        
-#     }
 
 def get_backend():
     if platform.system() == 'Windows' or "microsoft" in platform.uname().release:
@@ -1008,18 +972,6 @@ def multi_scale(samples, model):
     v /= 3
     v /= v.norm()
     return v
-
-
-def get_dataset_from_string(string):
-    keys = string.split(":")
-    data = keys[0].upper()
-    try:
-        if data in dataset_classes.keys():
-            return dataset_classes[data]
-        else:
-            return datasets.ImageFolder
-    except:
-        raise Exception(f"Dataset {data} is not available")
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """

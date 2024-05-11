@@ -34,7 +34,8 @@ from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 
 import Harmony.utils as utils
-from Harmony.utils import DataAugmentation, get_dataset_from_string
+from Harmony.utils import DataAugmentation
+from Harmony.data.utils import get_dataset_from_string
 from Harmony.models import Harmony
 from Harmony.data import IBOTLoaderWrapper
 from torch.cuda.amp.grad_scaler import OptState

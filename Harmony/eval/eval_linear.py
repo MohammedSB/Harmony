@@ -28,10 +28,10 @@ from torchvision import transforms as pth_transforms
 from torchvision import models as torchvision_models
 
 from Harmony import utils
-from Harmony.utils import get_dataset_from_string
 import Harmony.models.vision_transformer as vits
 from Harmony.models import Harmony 
 from Harmony.eval.metrics import MetricType, build_metric
+from Harmony.data.utils import get_dataset_from_string
 
 def eval_linear(args):
     utils.init_distributed_mode(args)

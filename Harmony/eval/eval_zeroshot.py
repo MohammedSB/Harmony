@@ -16,7 +16,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets_t
 
-from Harmony.utils import DataAugmentation, get_dataset_from_string
+from Harmony.data.utils import get_dataset_from_string
 import Harmony.models.vision_transformer as vits
 from Harmony.models.text_encoder import TextEncoder
 from Harmony.data.utils import SimpleTokenizer
