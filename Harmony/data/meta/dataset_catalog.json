@@ -1,14 +1,14 @@
 {
     "food101": {
-        "path": "/ibex/user/baharoms/data/food100",
+        "path": "/ibex/project/c2256/food100",
         "type": "torchvision"
     },
     "cifar10": {
-        "path": "/ibex/user/baharoms/data/cifar10",
+        "path": "/ibex/project/c2256/cifar10",
         "type": "torchvision"
     },
     "cifar100": {
-        "path": "/ibex/user/baharoms/data/cifar100",
+        "path": "/ibex/project/c2256/cifar100",
         "type": "torchvision"
     },
     "cub200": {
@@ -24,48 +24,48 @@
         "test": "test"
     },
     "cars": {
-        "path": "/ibex/user/baharoms/data/cars/car_data",
+        "path": "/ibex/project/c2256/cars/car_data",
         "type": "imagefolder",
         "train": "train",
         "test": "test"
     },
     "aircraft": {
-        "path": "/ibex/user/baharoms/data/aircraft",
+        "path": "/ibex/project/c2256/aircraft",
         "type": "torchvision"
     },
     "dtd": {
-        "path": "/ibex/user/baharoms/data/dtd",
+        "path": "/ibex/project/c2256/dtd",
         "type": "torchvision"
     },
     "pets": {
-        "path": "/ibex/user/baharoms/data/pets",
+        "path": "/ibex/project/c2256/pets",
         "type": "torchvision"
     },
     "caltech101": {
-        "path": "/ibex/user/baharoms/data/caltech-101/101_ObjectCategories",
+        "path": "/ibex/project/c2256/caltech-101/101_ObjectCategories",
         "type": "imagefolder",
         "train": "",
         "test": ""
     },
     "flowers": {
-        "path": "/ibex/user/baharoms/data/flowers",
+        "path": "/ibex/project/c2256/flowers",
         "type": "torchvision"
     },
     "mnist": {
-        "path": "/ibex/user/baharoms/data/mnist",
+        "path": "/ibex/project/c2256/mnist",
         "type": "torchvision"
     },
     "fer2013": {
-        "path": "/ibex/user/baharoms/data/fer",
+        "path": "/ibex/project/c2256/fer",
         "type": "imagefolder",
         "test": "test"
     },
     "stl10": {
-        "path": "/ibex/user/baharoms/data/stl",
+        "path": "/ibex/project/c2256/stl",
         "type": "torchvision"
     },
     "eurosat": {
-        "path": "/ibex/user/baharoms/data/eurosat",
+        "path": "/ibex/project/c2256/eurosat",
         "type": "imagefolder",
         "test": ""
     },
@@ -76,19 +76,19 @@
         "test": "test"
     },
     "gtsrb": {
-        "path": "/ibex/user/baharoms/data/gtsrb",
+        "path": "/ibex/project/c2256/gtsrb",
         "type": "torchvision"
     },
     "kitti_distance": {
-        "path": "/ibex/user/baharoms/data/kitti",
+        "path": "/ibex/project/c2256/kitti",
         "type": "torchvision"
     },
     "country211": {
-        "path": "/ibex/user/baharoms/data/country211",
+        "path": "/ibex/project/c2256/country211",
         "type": "torchvision"
     },
     "patch_camelyon": {
-        "path": "/ibex/user/baharoms/data/patch_camelyon",
+        "path": "/ibex/project/c2256/patch_camelyon",
         "type": "torchvision"
     },
     "ucf101_frames": {
@@ -116,7 +116,7 @@
         "test": "dev"
     },
     "rendered_sst2": {
-        "path": "/ibex/user/baharoms/data/sst2",
+        "path": "/ibex/project/c2256/sst2",
         "type": "torchvision"
     },
     "imagenet": {
