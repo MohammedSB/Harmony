@@ -238,7 +238,7 @@ class VisionTransformer(nn.Module):
 
         return self.pos_drop(x)
         
-    def prepare_tokens_with_mask_removal(self, x, mask, random=False):
+    def prepare_tokens_with_mask_removal(self, x, mask, random=False, ratio=0.5):
         B, nc, w, h = x.shape
 
         x = self.patch_embed(x)
@@ -249,7 +249,7 @@ class VisionTransformer(nn.Module):
 
         N, L, D = x.shape  # batch, length, dim
         if random == True:
-            len_keep = int(L * (1 - 0.5))
+            len_keep = int(L * (1 - ratio))
 
             noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
 
@@ -273,20 +273,18 @@ class VisionTransformer(nn.Module):
 
         return x
 
-    def forward(self, x, return_all_tokens=None, mask=None, contrastive=False, return_attn=False, remove_mask=False, random=False):
+    def forward(self, x, return_all_tokens=None, mask=None, contrastive=False, return_attn=False, remove_mask=False, random=False, ratio=0.5):
         # mim
-        attension = []
+        
         if remove_mask:
-            x = self.prepare_tokens_with_mask_removal(x, mask, random)
+            x = self.prepare_tokens_with_mask_removal(x, mask, random, ratio=ratio)
         elif self.masked_im_modeling:
             assert mask is not None
             x = self.prepare_tokens(x, mask=mask)
         else:
             x = self.prepare_tokens(x)
 
-        for blk in self.blocks:
-            x, attn = blk(x, return_attention=True)
-            attension.append(attn)
+        x, attension = self.forward_blocks(x)
 
         attension = torch.stack(attension, dim=0)
         attension = torch.mean(attension, dim=0)
@@ -310,6 +308,14 @@ class VisionTransformer(nn.Module):
         if return_attn:
             return cls_token, attension
         return cls_token
+    
+    def forward_blocks(self, x):
+        attension = []
+        for blk in self.blocks:
+            x, attn = blk(x, return_attention=True)
+            attension.append(attn)
+        return x, attension
+
 
     def get_last_selfattention(self, x):
         x = self.prepare_tokens(x)

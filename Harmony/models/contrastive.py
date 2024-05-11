@@ -9,7 +9,7 @@ from Harmony.losses import CLIPLoss
 from .utils import get_att_mask, get_att_mask_2, random_masking
 
 class ContrastivePath(nn.Module):
-    def __init__(self, image_backbone, meta, use_soft_labels):
+    def __init__(self, image_backbone, meta, use_soft_labels=False):
         super().__init__()
         self.image_backbone = image_backbone
         self.meta = meta
@@ -32,7 +32,7 @@ class ContrastivePath(nn.Module):
                 param.requires_grad = False
 
         
-    def forward(self, images, captions, hard_weight, teacher=None, teacher_attn=None):
+    def forward(self, images, captions, hard_weight=1.0, teacher=None, teacher_attn=None):
         # TODO: do this in a better way
         self.image_backbone.masked_im_modeling = False
         self.image_backbone.return_all_tokens = False
@@ -77,3 +77,11 @@ class ContrastivePath(nn.Module):
         self.image_backbone.return_all_tokens = self.meta["return_all_tokens"]
 
         return output   
+    
+    def forward_(self, images, captions):
+        text_embed = self.text_backbone(captions)
+        image_embed = self.image_backbone(images, contrastive=True)
+
+        output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp())
+
+        return output

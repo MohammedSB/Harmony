@@ -8,11 +8,13 @@ from collections import OrderedDict
 import json
 import os
 from sklearn import metrics
+import inspect
 
 import torch
 import torch.backends.cudnn as cudnn
 import torch.utils.data
 import torchvision.transforms as transforms
+import torchvision.datasets as datasets_t
 
 from Harmony.utils import DataAugmentation, get_dataset_from_string
 import Harmony.models.vision_transformer as vits
@@ -89,7 +91,25 @@ def main(args):
             data = get_dataset_from_string(d + ":" + d)
             val_dataset = data(data_root + f"{os.sep}val", transform=val_transform, split="val")
         elif entry['type'] == 'imagefolder':
-            val_dataset = dataset_classes[dataset_name](root=os.path.join(data_root, entry['test']), download=True, transform=val_transform)
+            val_dataset = datasets_t.ImageFolder(os.path.join(data_root, entry['test']), transform=val_transform)
+        elif entry['type'] == 'torchvision':
+            data = get_dataset_from_string(d + ":" + d)
+            constructor = data.__init__
+            signature = inspect.signature(constructor)
+            parameters = signature.parameters
+            if 'train' in parameters:
+                val_dataset = data(data_root, transform=val_transform, train=False, download=True)
+            elif 'split' in parameters:
+                if d in ["patch_camelyon", "eurosat", "kitti_distance", "places"]:
+                    val_dataset = data(data_root, transform=val_transform, split="val", download=True)
+                else:
+                    val_dataset = data(data_root, transform=val_transform, split="test", download=True)
+            else:
+                val_dataset = data(data_root, transform=val_transform, download=True)
+        # elif entry['type'] == 'special':
+        #     if d == 'fer2013':
+        #         val_dataset = datasets_t.FER2013(data_root, split='test',
+        #             transform=val_transform)
 
         val_loader = torch.utils.data.DataLoader(
             val_dataset, batch_size=args.batch_size, shuffle=False,

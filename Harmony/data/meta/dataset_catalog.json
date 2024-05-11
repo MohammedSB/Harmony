@@ -1,17 +1,15 @@
 {
     "food101": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/food100",
+        "type": "torchvision"
     },
     "cifar10": {
-        "path": "./data/cifar10",
-        "type": "special"
+        "path": "/ibex/user/baharoms/data/cifar10",
+        "type": "torchvision"
     },
     "cifar100": {
-        "path": "./data/cifar100",
-        "type": "special"
+        "path": "/ibex/user/baharoms/data/cifar100",
+        "type": "torchvision"
     },
     "cub200": {
         "path": "/path/to/dataset",
@@ -26,60 +24,50 @@
         "test": "test"
     },
     "cars": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/user/baharoms/data/cars/car_data",
         "type": "imagefolder",
         "train": "train",
         "test": "test"
     },
     "aircraft": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/aircraft",
+        "type": "torchvision"
     },
     "dtd": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/dtd",
+        "type": "torchvision"
     },
     "pets": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/pets",
+        "type": "torchvision"
     },
     "caltech101": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/user/baharoms/data/caltech-101/101_ObjectCategories",
         "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "train": "",
+        "test": ""
     },
     "flowers": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/flowers",
+        "type": "torchvision"
     },
     "mnist": {
-        "path": "./data/mnist",
-        "type": "special"
+        "path": "/ibex/user/baharoms/data/mnist",
+        "type": "torchvision"
     },
     "fer2013": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/user/baharoms/data/fer",
         "type": "imagefolder",
-        "train": "train",
         "test": "test"
     },
     "stl10": {
-        "path": "./data/stl10",
-        "type": "special"
+        "path": "/ibex/user/baharoms/data/stl",
+        "type": "torchvision"
     },
     "eurosat": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/user/baharoms/data/eurosat",
         "type": "imagefolder",
-        "train": "train",
-        "test": "val"
+        "test": ""
     },
     "resisc45": {
         "path": "/path/to/dataset",
@@ -88,28 +76,20 @@
         "test": "test"
     },
     "gtsrb": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/gtsrb",
+        "type": "torchvision"
     },
     "kitti_distance": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "val"
+        "path": "/ibex/user/baharoms/data/kitti",
+        "type": "torchvision"
     },
     "country211": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/country211",
+        "type": "torchvision"
     },
     "patch_camelyon": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "val"
+        "path": "/ibex/user/baharoms/data/patch_camelyon",
+        "type": "torchvision"
     },
     "ucf101_frames": {
         "path": "/path/to/dataset",
@@ -136,10 +116,8 @@
         "test": "dev"
     },
     "rendered_sst2": {
-        "path": "/path/to/dataset",
-        "type": "imagefolder",
-        "train": "train",
-        "test": "test"
+        "path": "/ibex/user/baharoms/data/sst2",
+        "type": "torchvision"
     },
     "imagenet": {
         "path": "/ibex/user/baharoms/data/imagenet",

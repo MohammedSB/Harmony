@@ -40,33 +40,38 @@ from Harmony.data import CC3M, ImageNet, YFCC15M
 dataset_classes = {
         "YFCC15M": YFCC15M,
         "CC3M": CC3M,
-        # "CALTECH101": datasets.Caltech101,
+        "CALTECH101": "",
+        "MNIST": datasets.MNIST,
+        "STL10": datasets.STL10,
+        "CIFAR10": datasets.CIFAR10,
+        "CIFAR100": datasets.CIFAR100,
+        "FOOD101": datasets.Food101,
+        "EUROSAT": datasets.EuroSAT,
+        "DTD": datasets.DTD,
+        "GTSRB": datasets.GTSRB,
+        "FER2013": datasets.FER2013,
+        "COUNTRY211": datasets.Country211,
+        "AIRCRAFT": datasets.FGVCAircraft,
+        "PETS": datasets.OxfordIIITPet,
+        "KITTI_DISTANCE": datasets.Kitti,
+        "FLOWERS": datasets.Flowers102,
+        "RENDERED_SST2": datasets.RenderedSST2,
+        "CARS": datasets.StanfordCars,
         "IMAGENET": ImageNet
 }
 
 # dataset_classes = {
 #         "CC3M": CC3M,
 #         "IMAGENET": ImageNet,
-#         "CALTECH101": datasets.Caltech101,
-#         "CIFAR10": datasets.CIFAR10,
-#         "CIFAR100": datasets.CIFAR100,
-#         "FOOD101": datasets.Food101,
-#         "EUROSAT": datasets.EuroSAT,
-#         "COUNTRY211": datasets.Country211,
-#         "DTD": datasets.DTD,
-#         "FER-2013": datasets.FER2013,
-#         "AIRCRAFT": datasets.fgvc_aircraft,
-#         "GTSRB": datasets.GTSRB,
-#         # "MEMES": datasets.HatefulMemes,
-#         # "KITTUDIS": datasets.KittuDis,
-#         "MNIST": datasets.MNIST,
-#         "FLOWERS": datasets.Flowers102,
-#         "PETS": datasets.OxfordIIITPet,
-#         "PATCHCAM": datasets.PCAM,
-#         "SST2": datasets.RenderedSST2,
-#         # "RESISC45": datasets.RESISC45,
-#         "CARS": datasets.StanfordCars,
-#         # "VOC2007": datasets.VOC2007
+#         ,
+        
+        # "MEMES": datasets.HatefulMemes,
+#         
+        
+        
+#         # "
+        
+        
 #     }
 
 def get_backend():
