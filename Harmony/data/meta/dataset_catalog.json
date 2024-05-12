@@ -39,7 +39,9 @@
     },
     "pets": {
         "path": "/ibex/project/c2256/pets",
-        "type": "torchvision"
+        "type": "imagefolder",
+        "train": "",
+        "test": "test"
     },
     "caltech101": {
         "path": "/ibex/project/c2256/caltech-101/101_ObjectCategories",
@@ -49,7 +51,9 @@
     },
     "flowers": {
         "path": "/ibex/project/c2256/flowers",
-        "type": "torchvision"
+        "type": "imagefolder",
+        "train": "",
+        "test": ""
     },
     "mnist": {
         "path": "/ibex/project/c2256/mnist",

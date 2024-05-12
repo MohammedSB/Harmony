@@ -12,6 +12,7 @@ from .vision_transformer import VisionTransformer, Block
 from .contrastive import ContrastivePath
 from .utils import get_embedding_size_from_arch, get_masked_captions, get_att_mask
 from Harmony.utils import get_2d_sincos_pos_embed
+from Harmony.losses import MaskeDistLoss
 
 
 class MaskCLIP(torch.nn.Module):
@@ -49,6 +50,19 @@ class MaskCLIP(torch.nn.Module):
             self.student = nn.SyncBatchNorm.convert_sync_batchnorm(self.student)
             self.teacher = nn.SyncBatchNorm.convert_sync_batchnorm(self.teacher)
 
+        self.loss = MaskeDistLoss(               
+                self.meta['embed_dim'],
+                self.meta['embed_dim'],
+                self.meta['warmup_teacher_temp'],
+                self.meta['teacher_temp'],
+                self.meta['warmup_teacher_patch_temp'],
+                self.meta['teacher_patch_temp'],
+                self.meta['warmup_teacher_temp_epochs'],
+                self.meta['epochs'],
+                lambda1=self.meta['lambda1'],
+                lambda2=self.meta['lambda2'],
+                )
+        
         self.teacher.load_state_dict(self.student.state_dict(), strict=False)        
         self.contrastive_path = ContrastivePath(image_backbone=self.student, meta=self.meta)
         self.text_student = self.contrastive_path.text_backbone
@@ -157,8 +171,10 @@ class MaskCLIP(torch.nn.Module):
         student_embd = self.forward_decoder(student_embd, ids_restore=ids_restore)
         teacher_embd = self.teacher(images, return_all_tokens=True)
 
-        print(student_embd.shape)
-        print(teacher_embd.shape)
+        # mask self distillation loss
+        mask_loss = self.loss(student_embd, teacher_embd, mask, epoch)
+        outputs['mask_dist_loss'] = mask_loss.item() * self.meta['mask_dist_weight']
+        outputs['loss'] += mask_loss * self.meta['mask_dist_weight']
 
         # clip loss
         output = self.contrastive_path.forward_(images, captions) 
@@ -174,11 +190,10 @@ class MaskCLIP(torch.nn.Module):
         
         probs = mlm_output.view(-1, mlm_output.size(-1)) 
         labels = labels.view(-1)
-
         mlm_loss = torch.nn.functional.cross_entropy(probs, labels)
-        if torch.isnan(loss):
+        if torch.isnan(mlm_loss):
             mlm_loss = torch.tensor(0.0) 
-        outputs['clip_loss'] = mlm_loss.item() * self.meta["mlm_weight"]
-        outputs['loss'] += mlm_loss
+        outputs['mlm_loss'] = mlm_loss.item() * self.meta["mlm_weight"]
+        outputs['loss'] += mlm_loss * self.meta["mlm_weight"]
 
         return outputs

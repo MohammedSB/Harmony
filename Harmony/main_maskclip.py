@@ -46,7 +46,7 @@ torchvision_archs = sorted(name for name in torchvision_models.__dict__
     and callable(torchvision_models.__dict__[name]))
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('Harmony', add_help=False)
+    parser = argparse.ArgumentParser('MaskCLIP', add_help=False)
 
     # Model parameters
     parser.add_argument('--arch', default='vit_small', type=str,
@@ -59,15 +59,6 @@ def get_args_parser():
         values leads to better performance but requires more memory. Applies only
         for ViTs (vit_tiny, vit_small and vit_base). If <16, we recommend disabling
         mixed precision training (--use_fp16 false) to avoid unstabilities.""")
-    parser.add_argument('--out_dim', default=65536, type=int, help="""Dimensionality of
-        the DINO head output. For complex and large datasets large values (like 65k) work well.""")
-    parser.add_argument('--patch_out_dim', default=8192, type=int, help="""Dimensionality of
-        output for patch tokens.""")
-    parser.add_argument('--shared_head', default=False, type=utils.bool_flag, help="""Wether to share 
-        the same head for [CLS] token output and patch tokens output. When set to false, patch_out_dim
-        is ignored and enforced to be same with out_dim. (Default: False)""")
-    parser.add_argument('--shared_head_teacher', default=True, type=utils.bool_flag, help="""See above.
-        Only works for teacher model. (Defeault: True)""")
     parser.add_argument('--norm_last_layer', default=True, type=utils.bool_flag,
         help="""Whether or not to weight normalize the last layer of the DINO head.
         Not normalizing leads to better performance but can make the training unstable.
@@ -79,27 +70,13 @@ def get_args_parser():
         help="Norm to use in head for discriminative path (Default: None)")
     parser.add_argument('--act_in_head', default='gelu',
         help="Activation function in the projection head (Default: gelu)")
-    parser.add_argument('--use_masked_im_modeling', default=True, type=utils.bool_flag,
-        help="Whether to use masked image modeling (mim) in backbone (Default: True)")
-    parser.add_argument('--pred_ratio', default=0.3, type=float, nargs='+', help="""Ratio of partial prediction.
-        If a list of ratio is specified, one of them will be randomly choosed for each patch.""")
-    parser.add_argument('--pred_ratio_var', default=0, type=float, nargs='+', help="""Variance of partial prediction
-        ratio. Length should be indentical to the length of pred_ratio. 0 for disabling. """)
-    parser.add_argument('--pred_shape', default='block', type=str, help="""Shape of partial prediction.""")
-    parser.add_argument('--pred_start_epoch', default=0, type=int, help="""Start epoch to perform masked
-        image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
     # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
     #     help="Whether to use batch normalizations in projection head (Default: False)")
     parser.add_argument('--mask_ratio', default=0.75, type=float, help="Initial masking ratio for MAE.")
-    parser.add_argument('--separate_gen_model', default=False, type=utils.bool_flag, help="""whether to separate the
-        generative path""")
-    parser.add_argument('--lambda1', default=0.5, type=float, help="""loss weight for dino
+    parser.add_argument('--lambda1', default=1, type=float, help="""loss weight for dino
         loss over [CLS] tokens (Default: 1.0)""")
-    parser.add_argument('--lambda2', default=0.5, type=float, help="""loss weight for beit 
+    parser.add_argument('--lambda2', default=1, type=float, help="""loss weight for beit 
         loss over masked patch tokens (Default: 1.0)""")
-    parser.add_argument('--objective', default='dino', type=str,
-        choices=utils.power_set_permutations(['dino', 'ibot', 'mae', 'clip']),
-        help="The method to use for training the model")
 
     # Temperature teacher parameters
     parser.add_argument('--warmup_teacher_temp', default=0.04, type=float,
@@ -120,8 +97,8 @@ def get_args_parser():
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
-    parser.add_argument('--disc_weight', type=float, default=1, help="""Loss scaling for discriminative path""")
-    parser.add_argument('--mlm_weight', type=float, default=1, help="""Loss scaling for mlm""")
+    parser.add_argument('--mask_dist_weight', type=float, default=0.05, help="""Loss scaling for mask self dist""")
+    parser.add_argument('--mlm_weight', type=float, default=0.05, help="""Loss scaling for mlm""")
     parser.add_argument('--weight_decay', type=float, default=0.04, help="""Initial value of the
         weight decay. With ViT, a smaller value at the beginning of training works well.""")
     parser.add_argument('--weight_decay_end', type=float, default=0.4, help="""Final value of the
@@ -133,9 +110,6 @@ def get_args_parser():
     parser.add_argument('--batch_size_per_gpu', default=64, type=int,
         help='Per-GPU batch-size : number of distinct images loaded on one GPU.')
     parser.add_argument('--epochs', default=100, type=int, help='Number of epochs of training.')
-    parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
-        during which we keep the output layer fixed. Typically doing so during
-        the first epoch helps training. Try increasing this value if the loss does not decrease.""")
     parser.add_argument("--lr", default=0.0005, type=float, help="""Learning rate at the end of
         linear warmup (highest LR used during training). The learning rate is linearly scaled
         with the batch size, and specified here for a reference batch size of 256.""")
@@ -146,21 +120,6 @@ def get_args_parser():
     parser.add_argument('--optimizer', default='adamw', type=str,
         choices=['adamw', 'sgd', 'lars'], help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
-    parser.add_argument('--use_mlm', type=utils.bool_flag, default=False)
-
-    # Multi-crop parameters
-    parser.add_argument('--global_crops_number', type=int, default=2, help="""Number of global
-        views to generate. Default is to use two global crops. """)
-    parser.add_argument('--global_crops_scale', type=float, nargs='+', default=(0.4, 1.),
-        help="""Scale range of the cropped image before resizing, relatively to the origin image.
-        Used for large global view cropping. When disabling multi-crop (--local_crops_number 0), we
-        recommand using a wider range of scale ("--global_crops_scale 0.14 1." for example)""")
-    parser.add_argument('--local_crops_number', type=int, default=8, help="""Number of small
-        local views to generate. Set this parameter to 0 to disable multi-crop training.
-        When disabling multi-crop we recommend to use "--global_crops_scale 0.14 1." """)
-    parser.add_argument('--local_crops_scale', type=float, nargs='+', default=(0.05, 0.4),
-        help="""Scale range of the cropped image before resizing, relatively to the origin image.
-        Used for small local view cropping of multi-crop.""")
 
     # Misc
     parser.add_argument('--data', default='CC3M:/mnt/d/CC3M/cc3m', type=str,
@@ -252,9 +211,12 @@ def train(args):
         args.weight_decay_end,
         args.epochs, len(data_loader),
     )
-    # momentum parameter is increased to 1. during training with a cosine schedule
-    momentum_schedule = utils.cosine_scheduler(args.momentum_teacher, 1,
-                                               args.epochs, len(data_loader))
+    # momentum parameter is increased to 0.9999. during training with a linear scheduler
+    # following maskclip
+    momentum_schedule = [
+        args.momentum_teacher + (0.9999 - args.momentum_teacher) * i / (args.epochs * len(data_loader))
+        for i in range(args.epochs * len(data_loader))]
+
     print(f"Loss, optimizer and schedulers ready.")
 
     # ============ optionally resume training ... ============
@@ -286,7 +248,6 @@ def train(args):
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
-            # 'disc_loss': model.discriminative_path.loss.state_dict() if model.is_discriminative else None,
         }
  
         main_vit  = model.teacher.state_dict() 
@@ -371,16 +332,14 @@ def train_one_epoch(model, data_loader,
             loss.backward()
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.
-                utils.cancel_gradients_last_layer(epoch, student,
-                                              args.freeze_last_layer)
+
             optimizer.step()
         else:   
             fp16_scaler.scale(loss).backward()
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
-                utils.cancel_gradients_last_layer(epoch, student,
-                                              args.freeze_last_layer)
+    
             fp16_scaler.step(optimizer)
             fp16_scaler.update()  
 
@@ -394,7 +353,7 @@ def train_one_epoch(model, data_loader,
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())
-        if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=model_output["disc_loss"])
+        if 'mask_dist_loss' in model_output.keys(): metric_logger.update(mask_dist_loss=model_output["mask_dist_loss"])
         if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])
         if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=model_output['mlm_loss'])
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])

@@ -114,16 +114,6 @@ class DiscriminativePath(nn.Module):
 
             loss = all_loss.pop('loss')
 
-        # if self.use_koleo:
-        #     self.koleo_loss = KoLeoLoss()
-        #     koleo_loss = self.cfg.dino.koleo_loss_weight * sum(
-        #         self.koleo_loss(p) for p in student_cls_tokens.chunk(2)
-        #     )  # we don't apply koleo loss between cls tokens of a same image
-        #     loss_accumulator += koleo_loss
-        #     loss_dict["koleo_loss"] = (
-        #         koleo_loss / loss_scales
-        #         )  # this is to display the same losses as before but we can remove eventually
-
         return {
             "teacher_attn": attn,
             "teacher_output": teacher_output,
