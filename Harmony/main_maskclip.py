@@ -188,7 +188,7 @@ def train(args):
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
     if args.optimizer == "adamw":
-        optimizer = torch.optim.AdamW(params_groups, eps=1e-06, betas=(0.9, 0.98))  # to use with ViTs
+        optimizer = torch.optim.AdamW(params_groups, eps=1e-06, betas=(0.9, 0.98), weight_decay=0.1)  # to use with ViTs
     elif args.optimizer == "sgd":
         optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
     elif args.optimizer == "lars":
