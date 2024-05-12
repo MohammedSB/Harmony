@@ -183,7 +183,7 @@ def train(args):
     }
 
     model = MaskCLIP(args=args, meta_training_data=meta_training_data).to(args.gpu)
-    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -227,7 +227,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        # disc_loss=model.discriminative_path.loss if model.is_discriminative else None
+        # disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
 
@@ -244,14 +244,14 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'model': model.state_dict(),
+            'model': model.module.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
         }
  
-        main_vit  = model.teacher.state_dict() 
-        main_text = model.text_student.state_dict()
+        main_vit  = model.module.teacher.state_dict() 
+        main_text = model.module.text_student.state_dict()
         
         if fp16_scaler != None:
            save_dict['fp16_scaler'] = fp16_scaler.state_dict()
@@ -282,11 +282,11 @@ def train_one_epoch(model, data_loader,
 
     # common params
     names_q, params_q, names_k, params_k = [], [], [], []
-    if model.teacher != None:
-        for name_q, param_q in model.student.named_parameters():
+    if model.module.teacher != None:
+        for name_q, param_q in model.module.student.named_parameters():
             names_q.append(name_q)
             params_q.append(param_q)
-        for name_k, param_k in model.teacher.named_parameters():
+        for name_k, param_k in model.module.teacher.named_parameters():
             names_k.append(name_k)
             params_k.append(param_k)
 
@@ -327,11 +327,11 @@ def train_one_epoch(model, data_loader,
         # student update
         optimizer.zero_grad()
         param_norms = None
-        student = model.student
+        student = model.module.student
         if not args.use_fp16:
             loss.backward()
             if args.clip_grad:
-                param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.
+                param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.module.
 
             optimizer.step()
         else:   
@@ -345,7 +345,7 @@ def train_one_epoch(model, data_loader,
 
         # EMA update for the teacher
         m = momentum_schedule[it]  # momentum parameter
-        if model.teacher != None:
+        if model.module.teacher != None:
             with torch.no_grad():
                 for param_q, param_k in zip(params_q, params_k):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
