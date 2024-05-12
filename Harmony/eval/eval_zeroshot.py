@@ -9,6 +9,8 @@ import json
 import os
 from sklearn import metrics
 import inspect
+import numpy as np
+from PIL import Image
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -16,11 +18,41 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets_t
 
-from Harmony.data.utils import get_dataset_from_string
+from Harmony.data.datasets import get_dataset_from_string
+from Harmony.data.datasets import dataset_classes
 import Harmony.models.vision_transformer as vits
 from Harmony.models.text_encoder import TextEncoder
 from Harmony.data.utils import SimpleTokenizer
-from Harmony.utils import dataset_classes
+
+def pil_loader(path):
+    # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
+    with open(path, 'rb') as f:
+        img = Image.open(f)
+        return img.convert('RGB')
+
+
+class FileListDataset(torch.utils.data.Dataset):
+    def __init__(self, images, labels, transform=None, target_transform=None):
+        self.transform = transform
+        self.target_transform = target_transform
+        self.images = np.load(images)
+        self.labels = np.load(labels)
+
+    def __getitem__(self, index):
+        img = pil_loader(self.images[index])
+        target = self.labels[index]
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.images)
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser(description='SLIP 0-shot evaluations', add_help=False)
@@ -106,6 +138,15 @@ def main(args):
                     val_dataset = data(data_root, transform=val_transform, split="test", download=True)
             else:
                 val_dataset = data(data_root, transform=val_transform, download=True)
+        elif entry['type'] == 'filelist':
+            path = entry['test']
+            val_images = os.path.join(data_root, path + '_images.npy')
+            val_labels = os.path.join(data_root, path + '_labels.npy')
+            if d == 'clevr_counts':
+                target_transform = lambda x: ['count_10', 'count_3', 'count_4', 'count_5', 'count_6', 'count_7', 'count_8', 'count_9'].index(x)
+            else:
+                target_transform = None
+            val_dataset = FileListDataset(val_images, val_labels, val_transform, target_transform)
         # elif entry['type'] == 'special':
         #     if d == 'fer2013':
         #         val_dataset = datasets_t.FER2013(data_root, split='test',

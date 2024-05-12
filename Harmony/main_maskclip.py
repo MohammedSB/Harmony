@@ -35,7 +35,7 @@ from torchvision import models as torchvision_models
 
 import Harmony.utils as utils
 from Harmony.utils import DataAugmentation
-from Harmony.data.utils import get_dataset_from_string
+from Harmony.data.datasets import get_dataset_from_string
 from Harmony.models import MaskCLIP
 from Harmony.data import IBOTLoaderWrapper
 from torch.cuda.amp.grad_scaler import OptState

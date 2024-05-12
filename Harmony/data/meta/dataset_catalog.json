@@ -12,13 +12,13 @@
         "type": "torchvision"
     },
     "cub200": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/project/c2256/cub200",
         "type": "imagefolder",
         "train": "train",
-        "test": "val"
+        "test": "test"
     },
     "sun397": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/project/c2256/SUN397",
         "type": "filelist",
         "train": "train",
         "test": "test"
@@ -70,7 +70,7 @@
         "test": ""
     },
     "resisc45": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/project/c2256/resisc45",
         "type": "imagefolder",
         "train": "train",
         "test": "test"
@@ -80,8 +80,9 @@
         "type": "torchvision"
     },
     "kitti_distance": {
-        "path": "/ibex/project/c2256/kitti",
-        "type": "torchvision"
+        "path": "/ibex/project/c2256/kitt_d",
+        "type": "imagefolder",
+        "test": "val"
     },
     "country211": {
         "path": "/ibex/project/c2256/country211",
