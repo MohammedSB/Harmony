@@ -147,10 +147,6 @@ def main(args):
             else:
                 target_transform = None
             val_dataset = FileListDataset(val_images, val_labels, val_transform, target_transform)
-        # elif entry['type'] == 'special':
-        #     if d == 'fer2013':
-        #         val_dataset = datasets_t.FER2013(data_root, split='test',
-        #             transform=val_transform)
 
         val_loader = torch.utils.data.DataLoader(
             val_dataset, batch_size=args.batch_size, shuffle=False,

@@ -51,7 +51,7 @@
     },
     "flowers": {
         "path": "/ibex/project/c2256/flowers",
-        "type": "imagefolder",
+        "type": "torchvision",
         "train": "",
         "test": ""
     },
@@ -90,7 +90,8 @@
     },
     "country211": {
         "path": "/ibex/project/c2256/country211",
-        "type": "torchvision"
+        "type": "imagefolder",
+        "test": "test"
     },
     "patch_camelyon": {
         "path": "/ibex/project/c2256/patch_camelyon",
