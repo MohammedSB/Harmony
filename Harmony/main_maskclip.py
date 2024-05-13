@@ -303,12 +303,7 @@ def train_one_epoch(model, data_loader,
 
     for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
 
-        if len(data) == 3:
-            images, captions, masks = data
-            masks = [m.cuda(non_blocking=True) for m in masks]
-        elif len(data) == 2:
-            images, captions = data
-            masks = None
+        images, captions = data
     
         # move images to gpu
         # images = [im.cuda(non_blocking=True) for im in images]
@@ -324,7 +319,7 @@ def train_one_epoch(model, data_loader,
 
         # teacher and student forward passes + compute loss
         with torch.cuda.amp.autocast(args.use_fp16):
-            model_output = model(images, epoch, it, masks=masks, captions=captions)
+            model_output = model(images, epoch, captions=captions)
             loss = model_output["loss"]
 
         if not math.isfinite(loss):

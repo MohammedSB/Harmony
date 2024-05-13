@@ -162,7 +162,7 @@ class MaskCLIP(torch.nn.Module):
         
         return x
             
-    def forward(self, images, epoch, iteration, captions=None, masks=None):
+    def forward(self, images, epoch, captions=None):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
         outputs = {'loss': loss}
 

@@ -419,6 +419,6 @@ if __name__ == "__main__":
     with open(args.output_dir + os.sep + "coco_results.json", "w") as out: 
         json.dump(r, out)
 
-    # r, _, _ = flickr_retrieval_evaluation(image_encoder, text_encoder, val_transform, tokenizer, args)
-    # with open(args.output_dir + os.sep + "flickr_results.json", "w") as out: 
-    #     json.dump(r, out)
+    r, _, _ = flickr_retrieval_evaluation(image_encoder, text_encoder, val_transform, tokenizer, args)
+    with open(args.output_dir + os.sep + "flickr_results.json", "w") as out: 
+        json.dump(r, out)

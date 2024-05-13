@@ -151,7 +151,7 @@ def get_args_parser():
         choices=['adamw', 'sgd', 'lars'], help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
     parser.add_argument('--reconstruct_global_crops', type=utils.bool_flag, default=True, help="""Whether to reconstruct global crops or
-                        entire image""")
+                        entire image with little augmentation""")
     parser.add_argument('--contrastive_global_crops', type=utils.bool_flag, default=True, help="""Whether to use global crop in the 
                         contrastive learning objective""")
     parser.add_argument('--use_mlm', type=utils.bool_flag, default=False)
