@@ -130,5 +130,23 @@
         "type": "imagefolder",
         "train": "train",
         "test": "val"
+    },
+    "imagenet-a": {
+        "path": "/ibex/project/c2256/imagenet-a/imagenet-a",
+        "type": "imagefolder",
+        "train": "",
+        "test": ""
+    },
+    "imagenet-o": {
+        "path": "/ibex/project/c2256/imagenet-o/imagenet-o",
+        "type": "imagefolder",
+        "train": "",
+        "test": ""
+    },
+    "imagenet-r": {
+        "path": "/ibex/project/c2256/imagenet-r/imagenet-r",
+        "type": "imagefolder",
+        "train": "",
+        "test": ""
     }
 }

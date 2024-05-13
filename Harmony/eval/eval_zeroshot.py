@@ -23,6 +23,7 @@ from Harmony.data.datasets import dataset_classes
 import Harmony.models.vision_transformer as vits
 from Harmony.models.text_encoder import TextEncoder
 from Harmony.data.utils import SimpleTokenizer
+from Harmony.data.meta.robust_mapping import indices_in_1k, thousand_k_to_200 
 
 def pil_loader(path):
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)

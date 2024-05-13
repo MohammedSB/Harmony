@@ -190,7 +190,7 @@ def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokeniz
     )
 
     with torch.no_grad():
-        logging.info("extracting flickr text features...")
+        print("extracting flickr text features...")
         all_text_features = []
         for texts in tqdm.tqdm(flickr_retrieval_text_dataloader):
             # texts = texts.to(args.device)
@@ -202,7 +202,7 @@ def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokeniz
             all_text_features.append(text_features)
         all_text_features = torch.cat(all_text_features, dim=0)
 
-        logging.info("extracting flickr image features...")
+        print("extracting flickr image features...")
         all_image_features = []
         for images, img_id in tqdm.tqdm(flickr_retrieval_dataloader):
             # images = images.to(args.device)
@@ -233,7 +233,7 @@ def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokeniz
         flickr_retrieval_dataloader.dataset.img2txt,
         flickr_retrieval_dataloader.dataset.txt2img,
     )
-    logging.info("flickr retrieval evaluation: " + str(retrieval_metrics))
+    print("flickr retrieval evaluation: " + str(retrieval_metrics))
 
     deduplicated_text_features = torch.zeros_like(all_image_features)
     for i in range(len(flickr_retrieval_dataloader.dataset.img2txt)):
@@ -279,7 +279,7 @@ def coco_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokenizer
     )
 
     with torch.no_grad():
-        logging.info("extracting COCO text features...")
+        print("extracting COCO text features...")
         all_text_features = []
         for texts in tqdm.tqdm(coco_retrieval_text_dataloader):
             # texts = texts.to(args.device)
@@ -291,7 +291,7 @@ def coco_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokenizer
             all_text_features.append(text_features)
         all_text_features = torch.cat(all_text_features, dim=0)
 
-        logging.info("extracting COCO image features...")
+        print("extracting COCO image features...")
         all_image_features = []
         for images, img_id in tqdm.tqdm(coco_retrieval_dataloader):
             # images = images.to(args.device)
@@ -322,7 +322,7 @@ def coco_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokenizer
         coco_retrieval_dataloader.dataset.img2txt,
         coco_retrieval_dataloader.dataset.txt2img,
     )
-    logging.info("COCO retrieval evaluation: " + str(retrieval_metrics))
+    print("COCO retrieval evaluation: " + str(retrieval_metrics))
 
     deduplicated_text_features = torch.zeros_like(all_image_features)
     for i in range(len(coco_retrieval_dataloader.dataset.img2txt)):

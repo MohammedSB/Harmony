@@ -26,7 +26,10 @@ dataset_classes = {
         "CUB200": "",
         "SUN397": "",
         "RESISC45": "",
-        "IMAGENET": ImageNet
+        "IMAGENET": ImageNet,
+        "IMAGENET-A": "",
+        "IMAGENET-R": "",
+        "IMAGENET-O": ""
 }
 
 

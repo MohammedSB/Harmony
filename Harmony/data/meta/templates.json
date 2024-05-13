@@ -57,6 +57,33 @@
         "art of the {}.",
         "a photo of the small {}."
     ],
+    "imagenet-a": [
+        "itap of a {}.",
+        "a bad photo of the {}.",
+        "a origami {}.",
+        "a photo of the large {}.",
+        "a {} in a video game.",
+        "art of the {}.",
+        "a photo of the small {}."
+    ],
+    "imagenet-o": [
+        "itap of a {}.",
+        "a bad photo of the {}.",
+        "a origami {}.",
+        "a photo of the large {}.",
+        "a {} in a video game.",
+        "art of the {}.",
+        "a photo of the small {}."
+    ],
+    "imagenet-r": [
+        "itap of a {}.",
+        "a bad photo of the {}.",
+        "a origami {}.",
+        "a photo of the large {}.",
+        "a {} in a video game.",
+        "art of the {}.",
+        "a photo of the small {}."
+    ],
     "rendered_sst2": [
         "a {} review of a movie."
     ],
