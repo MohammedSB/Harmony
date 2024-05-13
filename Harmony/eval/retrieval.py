@@ -8,10 +8,31 @@ import tqdm
 import os
 from torchvision.datasets.coco import CocoCaptions
 from torch.utils.data import Dataset, DataLoader
-from tokenizer import SimpleTokenizer
+from Harmony.data.datasets import get_dataset_from_string
+from Harmony.data.datasets import dataset_classes
+import Harmony.models.vision_transformer as vits
+from Harmony.models.text_encoder import TextEncoder
+from Harmony.data.utils import SimpleTokenizer
+import torchvision.transforms as transforms
 from PIL import Image
 from glob import glob
+import argparse
 
+
+def get_args_parser():
+    parser = argparse.ArgumentParser(description='SLIP 0-shot evaluations', add_help=False)
+    parser.add_argument('--output_dir', default='./', type=str, help='output dir')
+    parser.add_argument('--batch_size', default=2, type=int, help='batch_size')
+    parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
+                        help='number of data loading workers per process')
+    parser.add_argument('--image_encoder', default='', type=str, help='path to latest checkpoint')
+    parser.add_argument('--arch', default='vit_small')
+    parser.add_argument('--patch_size', default=16)
+    parser.add_argument('--text_encoder', default='', type=str, help='path to latest checkpoint')
+    parser.add_argument('--flickr_data_dir', default='', type=str)
+    parser.add_argument('--coco_data_dir', default='', type=str)
+    parser.add_argument('--distributed', default=False, type=bool)
+    return parser
 
 class FlickDataset(Dataset):
     def __init__(
@@ -27,7 +48,7 @@ class FlickDataset(Dataset):
         target_files = os.path.join(dataset_path,"results_20130124.token")
         captions = self.Read_Captions(target_files)
 
-        img_path = glob(dataset_path + "*jpg")
+        img_path = glob(dataset_path + os.sep + "*jpg")
         txt_id = 0
         for index in range(len(img_path)):
             path = img_path[index]
@@ -148,7 +169,7 @@ class FlickrTexts:
         return self.flickr_dataset.text[index]
 
 
-def flickr_retrieval_evaluation(model, preprocess, tokenizer, args):
+def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokenizer, args):
     flickr_dataset = FlickDataset(args.flickr_data_dir, transform=preprocess, tokenizer=tokenizer)
     flickr_retrieval_dataloader = DataLoader(
         flickr_dataset,
@@ -175,9 +196,9 @@ def flickr_retrieval_evaluation(model, preprocess, tokenizer, args):
             # texts = texts.to(args.device)
             texts = texts.cuda()
             if args.distributed and not args.horovod:
-                text_features = model.module.encode_text(texts, ema=True).detach().cpu()
+                text_features = text_encoder(texts).detach().cpu()
             else:
-                text_features = model.encode_text(texts, ema=True).detach().cpu()
+                text_features = text_encoder(texts).detach().cpu()
             all_text_features.append(text_features)
         all_text_features = torch.cat(all_text_features, dim=0)
 
@@ -188,9 +209,9 @@ def flickr_retrieval_evaluation(model, preprocess, tokenizer, args):
             images = images.cuda()
 
             if args.distributed and not args.horovod:
-                image_features = model.module.encode_image(images, ema=True).detach().cpu()
+                image_features = image_encoder(images, contrastive=True).detach().cpu()
             else:
-                image_features = model.encode_image(images, ema=True).detach().cpu()
+                image_features = image_encoder(images, contrastive=True).detach().cpu()
 
             all_image_features.append(image_features)
         all_image_features = torch.cat(all_image_features, dim=0)
@@ -223,7 +244,7 @@ def flickr_retrieval_evaluation(model, preprocess, tokenizer, args):
     return retrieval_metrics, all_image_features, deduplicated_text_features
 
 
-def coco_retrieval_evaluation(model, preprocess, tokenizer, args):
+def coco_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokenizer, args):
 
     coco_val_root = os.path.join(args.coco_data_dir, "val2017")
     coco_val_json = os.path.join(
@@ -264,9 +285,9 @@ def coco_retrieval_evaluation(model, preprocess, tokenizer, args):
             # texts = texts.to(args.device)
             texts = texts.cuda()
             if args.distributed and not args.horovod:
-                text_features = model.module.encode_text(texts, ema=True).detach().cpu()
+                text_features = text_encoder(texts).detach().cpu()
             else:
-                text_features = model.encode_text(texts, ema=True).detach().cpu()
+                text_features = text_encoder(texts).detach().cpu()
             all_text_features.append(text_features)
         all_text_features = torch.cat(all_text_features, dim=0)
 
@@ -277,9 +298,9 @@ def coco_retrieval_evaluation(model, preprocess, tokenizer, args):
             images = images.cuda()
 
             if args.distributed and not args.horovod:
-                image_features = model.module.encode_image(images, ema=True).detach().cpu()
+                image_features = image_encoder(images, contrastive=True).detach().cpu()
             else:
-                image_features = model.encode_image(images, ema=True).detach().cpu()
+                image_features = image_encoder(images, contrastive=True).detach().cpu()
 
             all_image_features.append(image_features)
         all_image_features = torch.cat(all_image_features, dim=0)
@@ -363,6 +384,41 @@ def get_retrieval_metrics(scores_img2text, scores_text2img, gt_img2text, gt_text
 
 
 if __name__ == "__main__":
-    ds = FlickDataset()
-    for i in ds:
-        pass
+    parser = argparse.ArgumentParser('retrival evaluations', parents=[get_args_parser()])
+    args = parser.parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    image_encoder = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0, can_be_contrastive=True)
+    image_encoder.cuda()
+    image_state_dict = torch.load(args.image_encoder)
+    image_state_dict = {k.replace("module.", ""): v for k, v in image_state_dict.items()}
+    image_encoder.load_state_dict(image_state_dict, strict=False)
+    print("=> loaded image checkpoint '{}'".format(args.image_encoder))
+
+    
+    text_encoder = TextEncoder(embed_dim=512)
+    text_encoder.cuda()
+    text_state_dict = torch.load(args.text_encoder)
+    text_state_dict = {k.replace("module.", ""): v for k, v in text_state_dict.items()}
+    text_encoder.load_state_dict(text_state_dict, strict=False)
+    print("=> loaded text checkpoint '{}'".format(args.text_encoder))
+
+    tokenizer = SimpleTokenizer()
+    val_transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            lambda x: x.convert('RGB'),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
+
+    import json
+
+    r, _, _ = coco_retrieval_evaluation(image_encoder, text_encoder, val_transform, tokenizer, args)
+    with open(args.output_dir + os.sep + "coco_results.json", "w") as out: 
+        json.dump(r, out)
+
+    # r, _, _ = flickr_retrieval_evaluation(image_encoder, text_encoder, val_transform, tokenizer, args)
+    # with open(args.output_dir + os.sep + "flickr_results.json", "w") as out: 
+    #     json.dump(r, out)

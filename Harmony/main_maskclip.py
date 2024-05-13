@@ -149,10 +149,17 @@ def train(args):
 
     # ============ preparing data ... ============
     transform = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=(0.6, 1.0), interpolation=3),
+            transforms.RandomResizedCrop(224, scale=(0.4, 1.0), interpolation=3),
             transforms.ToTensor(),
+            transforms.RandomApply(
+                [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+                p=0.8
+            ),
+            utils.GaussianBlur(1.0),
+            transforms.RandomGrayscale(p=0.2),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
+    
     # transform = DataAugmentation(
     #     args.global_crops_scale,
     #     args.local_crops_scale,

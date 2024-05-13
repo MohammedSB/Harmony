@@ -16,7 +16,7 @@ dataset_classes = {
         "DTD": datasets.DTD,
         "GTSRB": datasets.GTSRB,
         "FER2013": datasets.FER2013,
-        "COUNTRY211": datasets.Country211,
+        "COUNTRY211": "",
         "AIRCRAFT": datasets.FGVCAircraft,
         "PETS": "",
         "KITTI_DISTANCE": datasets.Kitti,

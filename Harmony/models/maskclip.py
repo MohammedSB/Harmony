@@ -166,7 +166,7 @@ class MaskCLIP(torch.nn.Module):
         loss = torch.tensor([0.0]).to(self.meta['gpu'])
         outputs = {'loss': loss}
 
-        # get masked embd from student and teacher embed
+        # get masked embd from student, and teacher embed
         student_embd, mask, ids_restore = self.forward_encoder(images, mask_ratio=0.75)
         student_embd = self.forward_decoder(student_embd, ids_restore=ids_restore)
         teacher_embd = self.teacher(images, return_all_tokens=True)
