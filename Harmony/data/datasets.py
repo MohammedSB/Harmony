@@ -4,6 +4,8 @@ from torchvision import datasets, transforms
 dataset_classes = {
         "YFCC15M": YFCC15M,
         "CC3M": CC3M,
+        "KINETICS700_FRAMES": "",
+        "CLEVR_COUNTS": "",
         "CALTECH101": "",
         "MNIST": datasets.MNIST,
         "STL10": datasets.STL10,
@@ -14,7 +16,7 @@ dataset_classes = {
         "DTD": datasets.DTD,
         "GTSRB": datasets.GTSRB,
         "FER2013": datasets.FER2013,
-        # "COUNTRY211": datasets.Country211,
+        "COUNTRY211": datasets.Country211,
         "AIRCRAFT": datasets.FGVCAircraft,
         "PETS": "",
         "KITTI_DISTANCE": datasets.Kitti,
@@ -24,7 +26,7 @@ dataset_classes = {
         "CUB200": "",
         "SUN397": "",
         "RESISC45": "",
-        # "IMAGENET": ImageNet
+        "IMAGENET": ImageNet
 }
 
 

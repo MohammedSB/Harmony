@@ -103,13 +103,13 @@
         "test": "val"
     },
     "kinetics700_frames": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/project/c2256/k700",
         "type": "imagefolder",
         "train": "train_images",
         "test": "val_images"
     },
     "clevr_counts": {
-        "path": "/path/to/dataset",
+        "path": "/ibex/project/c2256/clevr",
         "type": "filelist",
         "train": "train",
         "test": "val"
