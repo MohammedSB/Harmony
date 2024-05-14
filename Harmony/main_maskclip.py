@@ -120,7 +120,8 @@ def get_args_parser():
     parser.add_argument('--optimizer', default='adamw', type=str,
         choices=['adamw', 'sgd', 'lars'], help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
-    parser.add_argument('--with_head', default=False, type=utils.bool_flag, help="whether to add IBOT ")
+    parser.add_argument('--with_head', default=False, type=utils.bool_flag, help="whether to add IBOT head")
+    parser.add_argument('--with_cls', default=False, type=utils.bool_flag, help="whether to add CLS level objective ")
 
     # Misc
     parser.add_argument('--data', default='CC3M:/mnt/d/CC3M/cc3m', type=str,
@@ -151,13 +152,13 @@ def train(args):
     # ============ preparing data ... ============
     transform = transforms.Compose([
             transforms.RandomResizedCrop(224, scale=(0.6, 1.0), interpolation=3),
-            transforms.ToTensor(),
             # transforms.RandomApply(
             #     [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
             #     p=0.8
             # ),
             # utils.GaussianBlur(1.0),
-            # transforms.RandomGrayscale(p=0.2),
+            # transforms.RandomGrayscale(p=0.2)
+            transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
     

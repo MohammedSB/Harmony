@@ -11,7 +11,7 @@ class MaskeDistLoss(nn.Module):
                  teacher_temp, warmup_teacher_temp2, teacher_temp2, 
                  warmup_teacher_temp_epochs, nepochs, student_temp=0.1, 
                  center_momentum=0.9, center_momentum2=0.9,
-                 lambda1=1.0, lambda2=1.0, mim_start_epoch=0):
+                 lambda1=1.0, lambda2=1.0, mim_start_epoch=0, with_cls=True):
         super().__init__()
         self.student_temp = student_temp
         self.center_momentum = center_momentum
@@ -20,6 +20,7 @@ class MaskeDistLoss(nn.Module):
         self.register_buffer("center2", torch.zeros(1, 1, patch_out_dim))
         self.lambda1 = lambda1
         self.lambda2 = lambda2
+        self.with_cls = with_cls
 
         # we apply a warm up for the teacher temperature because
         # a too high temperature makes the training instable at the beginning
@@ -53,16 +54,18 @@ class MaskeDistLoss(nn.Module):
         teacher_patch_c = F.softmax((teacher_patch - self.center2) / temp2, dim=-1)
         teacher_patch_c = teacher_patch_c.detach()
 
-        # CLS level loss
-        cls_loss = torch.sum(-teacher_cls_c * F.log_softmax(student_cls, dim=-1), dim=-1)
-        cls_loss = cls_loss.mean()
-
         # Patch level loss
         patch_loss = torch.sum(-teacher_patch_c * F.log_softmax(student_patch, dim=-1), dim=-1)
         patch_loss = torch.sum(patch_loss * mask.float(), dim=-1) / mask.sum(dim=-1).clamp(min=1.0)
         patch_loss = patch_loss.mean()
 
-        loss = patch_loss + cls_loss
+        loss = patch_loss
+
+        if self.with_cls:
+            # CLS level loss
+            cls_loss = torch.sum(-teacher_cls_c * F.log_softmax(student_cls, dim=-1), dim=-1)
+            cls_loss = cls_loss.mean()
+            loss += cls_loss
 
         self.update_center(teacher_cls, teacher_patch)         
         return loss                      
