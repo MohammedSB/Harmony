@@ -120,6 +120,7 @@ def get_args_parser():
     parser.add_argument('--optimizer', default='adamw', type=str,
         choices=['adamw', 'sgd', 'lars'], help="""Type of optimizer. We recommend using adamw with ViTs.""")
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
+    parser.add_argument('--with_head', default=False, type=utils.bool_flag, help="whether to add IBOT ")
 
     # Misc
     parser.add_argument('--data', default='CC3M:/mnt/d/CC3M/cc3m', type=str,
@@ -149,14 +150,14 @@ def train(args):
 
     # ============ preparing data ... ============
     transform = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=(0.4, 1.0), interpolation=3),
+            transforms.RandomResizedCrop(224, scale=(0.6, 1.0), interpolation=3),
             transforms.ToTensor(),
-            transforms.RandomApply(
-                [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-                p=0.8
-            ),
-            utils.GaussianBlur(1.0),
-            transforms.RandomGrayscale(p=0.2),
+            # transforms.RandomApply(
+            #     [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+            #     p=0.8
+            # ),
+            # utils.GaussianBlur(1.0),
+            # transforms.RandomGrayscale(p=0.2),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
     
@@ -190,7 +191,7 @@ def train(args):
     }
 
     model = MaskCLIP(args=args, meta_training_data=meta_training_data).to(args.gpu)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
 
     # ============ preparing optimizer ... ============
     params_groups = utils.get_params_groups(model)
@@ -208,7 +209,7 @@ def train(args):
 
     # ============ init schedulers ... ============
     lr_schedule = utils.cosine_scheduler(
-        args.lr * (args.batch_size_per_gpu * utils.get_world_size()) / 256.,  # linear scaling rule
+        args.lr,  # linear scaling rule
         args.min_lr,
         args.epochs, len(data_loader),
         warmup_epochs=args.warmup_epochs,
@@ -234,7 +235,7 @@ def train(args):
         model=model,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
-        # disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
+        # disc_loss=model.discriminative_path.loss if model.is_discriminative else None
     )
     start_epoch = to_restore["epoch"]
 
@@ -251,14 +252,14 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'model': model.module.state_dict(),
+            'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
         }
  
-        main_vit  = model.module.teacher.state_dict() 
-        main_text = model.module.text_student.state_dict()
+        main_vit  = model.teacher.state_dict() 
+        main_text = model.text_student.state_dict()
         
         if fp16_scaler != None:
            save_dict['fp16_scaler'] = fp16_scaler.state_dict()
@@ -289,11 +290,11 @@ def train_one_epoch(model, data_loader,
 
     # common params
     names_q, params_q, names_k, params_k = [], [], [], []
-    if model.module.teacher != None:
-        for name_q, param_q in model.module.student.named_parameters():
+    if model.teacher != None:
+        for name_q, param_q in model.student.named_parameters():
             names_q.append(name_q)
             params_q.append(param_q)
-        for name_k, param_k in model.module.teacher.named_parameters():
+        for name_k, param_k in model.teacher.named_parameters():
             names_k.append(name_k)
             params_k.append(param_k)
 
@@ -329,11 +330,11 @@ def train_one_epoch(model, data_loader,
         # student update
         optimizer.zero_grad()
         param_norms = None
-        student = model.module.student
+        student = model.student
         if not args.use_fp16:
             loss.backward()
             if args.clip_grad:
-                param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.module.
+                param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.
 
             optimizer.step()
         else:   
@@ -347,7 +348,7 @@ def train_one_epoch(model, data_loader,
 
         # EMA update for the teacher
         m = momentum_schedule[it]  # momentum parameter
-        if model.module.teacher != None:
+        if model.teacher != None:
             with torch.no_grad():
                 for param_q, param_k in zip(params_q, params_k):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)

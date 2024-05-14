@@ -56,5 +56,5 @@ class iBOTHead(DINOHead):
         if self.last_norm is not None:
             x1 = self.last_norm(x1)
             x2 = self.last_norm2(x2)
-        
+    
         return x1, x2

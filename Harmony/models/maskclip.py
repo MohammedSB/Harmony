@@ -13,7 +13,7 @@ from .contrastive import ContrastivePath
 from .utils import get_embedding_size_from_arch, get_masked_captions, get_att_mask
 from Harmony.utils import get_2d_sincos_pos_embed
 from Harmony.losses import MaskeDistLoss
-
+from Harmony.models.heads import DINOHead, iBOTHead
 
 class MaskCLIP(torch.nn.Module):
     def __init__(self, args, meta_training_data=None):
@@ -28,13 +28,14 @@ class MaskCLIP(torch.nn.Module):
     def define_arch(self):
         # define the image encoder(s)
         try: 
-            self.student = vits.__dict__[self.meta['arch']](
+            self.image_model = vits.__dict__[self.meta['arch']](
                 patch_size=self.meta['patch_size'],
                 drop_path_rate=self.meta['drop_path_rate'],
                 can_be_contrastive=True,
             )
         except:
             raise Exception(f"Unknow arch: {self.meta['arch']}")
+        self.student = self.image_model
         self.meta['embed_dim'] = self.student.embed_dim
         
         # define the decoder
@@ -49,10 +50,37 @@ class MaskCLIP(torch.nn.Module):
         if utils.has_batchnorms(self.student):
             self.student = nn.SyncBatchNorm.convert_sync_batchnorm(self.student)
             self.teacher = nn.SyncBatchNorm.convert_sync_batchnorm(self.teacher)
+        
+        if self.meta["with_head"]:
+            print("Creating iBOT heads")
+            self.student_head = iBOTHead(
+                self.meta['embed_dim'], 
+                8192,
+                patch_out_dim=8192,
+                norm=None,
+                act='gelu',
+                norm_last_layer=True,
+                shared_head=True ,
+            )
+            self.teacher_head = iBOTHead(
+                self.meta['embed_dim'], 
+                8192,
+                patch_out_dim=8192,
+                norm=None,
+                act='gelu',
+                shared_head=True,
+            )
+            self.student = HEAD_WRAPPER(self.student, self.student_head)
+            self.teacher = HEAD_WRAPPER(self.teacher, self.teacher_head)
 
+        
+        loss_embed = self.meta['embed_dim']
+        if self.meta["with_head"]:
+            loss_embed = 8192
+        
         self.loss = MaskeDistLoss(               
-                self.meta['embed_dim'],
-                self.meta['embed_dim'],
+                loss_embed,
+                loss_embed,
                 self.meta['warmup_teacher_temp'],
                 self.meta['teacher_temp'],
                 self.meta['warmup_teacher_patch_temp'],
@@ -64,7 +92,7 @@ class MaskCLIP(torch.nn.Module):
                 )
         
         self.teacher.load_state_dict(self.student.state_dict(), strict=False)        
-        self.contrastive_path = ContrastivePath(image_backbone=self.student, meta=self.meta)
+        self.contrastive_path = ContrastivePath(image_backbone=self.image_model, meta=self.meta)
         self.text_student = self.contrastive_path.text_backbone
         print("Using masked language modeling")
         self.mlm_head = TextDecoder(transformer_layers=4)
@@ -121,24 +149,24 @@ class MaskCLIP(torch.nn.Module):
 
     def forward_encoder(self, x, mask_ratio):
         # embed patches
-        x = self.student.patch_embed(x)
+        x = self.image_model.patch_embed(x)
         x = x.flatten(2).transpose(1, 2)
 
         # add pos embed w/o cls token
-        x = x + self.student.pos_embed[:, 1:, :]
+        x = x + self.image_model.pos_embed[:, 1:, :]
 
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
         # append cls token
-        cls_token = self.student.cls_token + self.student.pos_embed[:, :1, :]
+        cls_token = self.image_model.cls_token + self.image_model.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
 
         # apply Transformer blocks
-        for blk in self.student.blocks:
+        for blk in self.image_model.blocks:
             x = blk(x)
-        x = self.student.norm(x)
+        x = self.image_model.norm(x)
 
         return x, mask, ids_restore
 
@@ -167,9 +195,21 @@ class MaskCLIP(torch.nn.Module):
         outputs = {'loss': loss}
 
         # get masked embd from student, and teacher embed
-        student_embd, mask, ids_restore = self.forward_encoder(images, mask_ratio=0.75)
-        student_embd = self.forward_decoder(student_embd, ids_restore=ids_restore)
-        teacher_embd = self.teacher(images, return_all_tokens=True)
+        if self.meta["with_head"]:
+            student_embd, mask, ids_restore = self.forward_encoder(images, mask_ratio=0.75)
+            student_embd = self.forward_decoder(student_embd, ids_restore=ids_restore)
+            x1, x2 = self.student_head(student_embd)
+            x1 = x1.unsqueeze(1)
+            student_embd = torch.cat((x1, x2), dim=1)
+
+            teacher_embd = self.teacher.backbone(images, return_all_tokens=True)
+            x1, x2 = self.teacher_head(teacher_embd)
+            x1 = x1.unsqueeze(1)
+            teacher_embd = torch.cat((x1, x2), dim=1)
+        else:
+            student_embd, mask, ids_restore = self.forward_encoder(images, mask_ratio=0.75)
+            student_embd = self.forward_decoder(student_embd, ids_restore=ids_restore)
+            teacher_embd = self.teacher(images, return_all_tokens=True)
 
         # mask self distillation loss
         mask_loss = self.loss(student_embd, teacher_embd, mask, epoch)
@@ -197,3 +237,32 @@ class MaskCLIP(torch.nn.Module):
         outputs['loss'] += mlm_loss * self.meta["mlm_weight"]
 
         return outputs
+    
+
+class HEAD_WRAPPER(torch.nn.Module):
+    def __init__(self, s, h):
+        super().__init__()
+        self.backbone = s
+        self.head = h
+        
+# class HEAD_WRAPPER(torch.nn.Module):
+#     def __init__(self, s, h, i = False):
+#         super().__init__()
+#         self.backbone = s
+#         self.head = h
+#         self.is_teacher = i
+        
+
+#     def forward(self, x):
+#         if self.is_teacher:
+#             x = self.backbone(x, return_all_tokens=True)
+#             x1, x2 = self.head(x) 
+#             x = torch.cat((x1, x2), dim=1)
+#             return x
+#         else:
+#             x, mask, ids_restore = self.backbone.forward_encoder(x, mask_ratio=0.75)
+#             x = self.forward_decoder(x, ids_restore=ids_restore)
+#             x1, x2 = self.head(x)
+#             x = torch.cat((x1, x2), dim=1)
+#             return x, mask
+            
