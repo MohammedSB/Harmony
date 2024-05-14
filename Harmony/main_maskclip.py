@@ -263,6 +263,11 @@ def train(args):
         if args.with_head:
             main_vit  = model.module.teacher.backbone.state_dict() 
         main_text = model.module.text_student.state_dict()
+ 
+        main_vit  = model.module.teacher.state_dict() 
+        if args.with_head:
+            main_vit  = model.module.teacher.backbone.state_dict()
+        main_text = model.module.text_student.state_dict()
         
         if fp16_scaler != None:
            save_dict['fp16_scaler'] = fp16_scaler.state_dict()
