@@ -55,6 +55,7 @@ def eval_linear(args):
 
     # ============ building network ... ============
     model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+    # model = timm.models.create_model(args.arch, num_classes=1000)
     model.cuda()
     model.eval()
 

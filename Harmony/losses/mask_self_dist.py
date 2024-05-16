@@ -21,6 +21,10 @@ class MaskeDistLoss(nn.Module):
         self.lambda1 = lambda1
         self.lambda2 = lambda2
         self.with_cls = with_cls
+        if self.with_cls:
+            print("Using CLS objective")
+        else:
+            print("Not using CLS objective")
 
         # we apply a warm up for the teacher temperature because
         # a too high temperature makes the training instable at the beginning

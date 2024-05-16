@@ -181,11 +181,12 @@ def main(args):
 
         is_acc = d not in ['aircraft', 'pets', 'caltech101', 'flowers', 'kinetics700_frames', 'hateful_memes']
 
+        results = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
         try:
-            acc_or_outputs, q = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
+            acc_or_outputs, q = results
             quals[d] = q
         except:
-            acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
+            acc_or_outputs = results
 
         if d in ['aircraft', 'pets', 'caltech101', 'flowers']:
             metric = mean_per_class(*acc_or_outputs)
