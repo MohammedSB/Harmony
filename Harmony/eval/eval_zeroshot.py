@@ -181,12 +181,13 @@ def main(args):
 
         is_acc = d not in ['aircraft', 'pets', 'caltech101', 'flowers', 'kinetics700_frames', 'hateful_memes']
 
-        results = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
-        try:
-            acc_or_outputs, q = results
-            quals[d] = q
-        except:
-            acc_or_outputs = results
+        acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
+        if is_acc:
+            try:
+                acc_or_outputs, q = acc_or_outputs
+                quals[d] = q
+            except:
+                print("I AM HERE")
 
         if d in ['aircraft', 'pets', 'caltech101', 'flowers']:
             metric = mean_per_class(*acc_or_outputs)
@@ -278,10 +279,7 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
                     l['preds'] = list(indices[i_].tolist())
                     l['probs'] = list(values[i_].tolist())
                     l['file'] = c_
-                    quals.append(l)                
-            #print(quals)
-                    # print(l)
-                        
+                    quals.append(l)                                        
             
     if is_acc:
         acc = 100 * total_top1 / total_images
