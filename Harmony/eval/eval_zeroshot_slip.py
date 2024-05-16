@@ -15,6 +15,8 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets_t
 
+
+import slip_models as models
 from Harmony.data.datasets import get_dataset_from_string
 from Harmony.data.datasets import dataset_classes
 import Harmony.models.vision_transformer as vits
