@@ -210,7 +210,7 @@ def main(args):
         json.dump(quals, out)
 
     with open(args.output_dir + os.sep + "results.json", "w") as out: 
-       json.dump(results, out)
+        json.dump(results, out)
 
 def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name):
     # switch to evaluate mode

@@ -89,6 +89,7 @@ class MaskCLIP(torch.nn.Module):
                 self.meta['epochs'],
                 lambda1=self.meta['lambda1'],
                 lambda2=self.meta['lambda2'],
+                with_cls=self.meta['with_cls']
                 )
         
         self.teacher.load_state_dict(self.student.state_dict(), strict=False)        
