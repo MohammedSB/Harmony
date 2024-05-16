@@ -78,8 +78,10 @@ def main(args):
     image_encoder.load_state_dict(image_state_dict, strict=False)
     print("=> loaded image checkpoint '{}'".format(args.image_encoder))
 
-    
-    text_encoder = TextEncoder(embed_dim=512)
+    try:
+        text_encoder = TextEncoder(embed_dim=512, vocab_size=49409)
+    except:
+        text_encoder = TextEncoder(embed_dim=512, vocab_size=49408)
     text_encoder.cuda()
     text_state_dict = torch.load(args.text_encoder)
     text_state_dict = {k.replace("module.", ""): v for k, v in text_state_dict.items()}
@@ -112,6 +114,7 @@ def main(args):
         ])
 
     results = {}
+    quals = {}
     for d in catalog:
         dataset_name = d.upper()
         if dataset_name not in dataset_classes:
@@ -152,12 +155,20 @@ def main(args):
 
         class idxWrapper(torch.utils.data.Dataset):
             def __init__(self, d):
-                super.__init__()
+                # super.__init__()
                 self.d = d
 
-            def getitem(self, indx):
-                i, t = d.getitem()
+            def __getitem__(self, indx):
+                i, t = self.d[indx]
                 return indx, i, t
+
+            def __len__(self):
+                # len_ = self.d.__len__()
+                # if len_ > 3000:
+                #     return 3000
+                # else:
+                #     return len_
+                return self.d.__len__()
             
         val_dataset = idxWrapper(val_dataset)
 
@@ -170,7 +181,11 @@ def main(args):
 
         is_acc = d not in ['aircraft', 'pets', 'caltech101', 'flowers', 'kinetics700_frames', 'hateful_memes']
 
-        acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
+        try:
+            acc_or_outputs, q = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
+            quals[d] = q
+        except:
+            acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
 
         if d in ['aircraft', 'pets', 'caltech101', 'flowers']:
             metric = mean_per_class(*acc_or_outputs)
@@ -191,8 +206,11 @@ def main(args):
     for k, v in results.items():
         print(f'{k}: {v:.1f}')
 
+    with open(args.output_dir + os.sep + "quals.json", "w") as out:
+        json.dump(quals, out)
+
     with open(args.output_dir + os.sep + "results.json", "w") as out: 
-        json.dump(results, out)
+       json.dump(results, out)
 
 def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name):
     # switch to evaluate mode
@@ -221,8 +239,7 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
             text_features.append(class_embeddings)
         text_features = torch.stack(text_features, dim=0)
         
-        corrects = {}
-        wrongs = {}
+        quals = []
 
         print("=> encoding data")
         for i, images, target in val_loader:
@@ -248,14 +265,28 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
             
             # qual stuff
             if "IMAGENET" in dataset_name:
+                #print("correct", correct)
                 try:
-                    print(val_loader.dataset.samples[i_] for i_ in i)
+                    c = [val_loader.dataset.d.samples[int(i_)][0] for i_ in i]
                 except:
-                    print(val_loader.images[i_] for i_ in i)
-
+                    c = [val_loader.dataset.d.images[int(i_)] for i_ in i]
+                for i_, c_ in enumerate(c):
+                    l = {"target": target[i_].item()}
+                    logits_per_image = torch.nn.functional.softmax(logits_per_image, dim=1)    
+                    values, indices = logits_per_image.topk(5, dim=1)
+                    l['preds'] = list(indices[i_].tolist())
+                    l['probs'] = list(values[i_].tolist())
+                    l['file'] = c_
+                    quals.append(l)                
+            #print(quals)
+                    # print(l)
+                        
             
     if is_acc:
-        return 100 * total_top1 / total_images
+        acc = 100 * total_top1 / total_images
+        if len(quals) > 0:
+            return acc, quals
+        return acc
     else:
         return torch.cat(all_outputs), torch.cat(all_targets)
 
