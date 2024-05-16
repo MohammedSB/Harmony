@@ -67,13 +67,14 @@ def main(args):
     cudnn.benchmark = True
 
     cwd = os.path.dirname(os.path.realpath(__file__))
-    with open(os.path.join(cwd, 'dataset_catalog.json')) as f:
+    meta_dir = f"{os.sep}".join(cwd.split(f"{os.sep}")[:-1]) + f"{os.sep}data{os.sep}meta"
+    with open(os.path.join(meta_dir, 'dataset_catalog.json')) as f:
         catalog = json.load(f)
 
-    with open(os.path.join(cwd, 'templates.json')) as f:
+    with open(os.path.join(meta_dir, 'templates.json')) as f:
         all_templates = json.load(f)
 
-    with open(os.path.join(cwd, 'labels.json')) as f:
+    with open(os.path.join(meta_dir, 'labels.json')) as f:
         all_labels = json.load(f)
 
     # Data loading code
