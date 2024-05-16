@@ -68,6 +68,7 @@ def get_args_parser():
     return parser
 
 
+
 def main(args):
     # create model(s)
     image_encoder = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0, can_be_contrastive=True)
@@ -149,6 +150,17 @@ def main(args):
                 target_transform = None
             val_dataset = FileListDataset(val_images, val_labels, val_transform, target_transform)
 
+        class idxWrapper(torch.utils.data.Dataset):
+            def __init__(self, d):
+                super.__init__()
+                self.d = d
+
+            def getitem(self, indx):
+                i, t = d.getitem()
+                return indx, i, t
+            
+        val_dataset = idxWrapper(val_dataset)
+
         val_loader = torch.utils.data.DataLoader(
             val_dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=args.workers, pin_memory=True, drop_last=False)
@@ -158,7 +170,7 @@ def main(args):
 
         is_acc = d not in ['aircraft', 'pets', 'caltech101', 'flowers', 'kinetics700_frames', 'hateful_memes']
 
-        acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc)
+        acc_or_outputs = validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name)
 
         if d in ['aircraft', 'pets', 'caltech101', 'flowers']:
             metric = mean_per_class(*acc_or_outputs)
@@ -182,7 +194,7 @@ def main(args):
     with open(args.output_dir + os.sep + "results.json", "w") as out: 
         json.dump(results, out)
 
-def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc):
+def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder, tokenizer, is_acc, dataset_name):
     # switch to evaluate mode
     image_encoder.eval()
     text_encoder.eval()
@@ -208,9 +220,12 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
             class_embeddings = class_embeddings / class_embeddings.norm(dim=-1, keepdim=True)
             text_features.append(class_embeddings)
         text_features = torch.stack(text_features, dim=0)
+        
+        corrects = {}
+        wrongs = {}
 
         print("=> encoding data")
-        for images, target in val_loader:
+        for i, images, target in val_loader:
             images = images.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
@@ -230,6 +245,14 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
             else:
                 all_outputs.append(logits_per_image.cpu())
                 all_targets.append(target.cpu())
+            
+            # qual stuff
+            if "IMAGENET" in dataset_name:
+                try:
+                    print(val_loader.dataset.samples[i_] for i_ in i)
+                except:
+                    print(val_loader.images[i_] for i_ in i)
+
             
     if is_acc:
         return 100 * total_top1 / total_images
