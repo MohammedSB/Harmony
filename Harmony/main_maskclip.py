@@ -258,11 +258,6 @@ def train(args):
             'epoch': epoch + 1,
             'args': args,
         }
-    
-        main_vit  = model.module.teacher.state_dict() 
-        if args.with_head:
-            main_vit  = model.module.teacher.backbone.state_dict() 
-        main_text = model.module.text_student.state_dict()
  
         main_vit  = model.module.teacher.state_dict() 
         if args.with_head:

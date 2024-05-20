@@ -155,7 +155,6 @@ def main(args):
 
         class idxWrapper(torch.utils.data.Dataset):
             def __init__(self, d):
-                # super.__init__()
                 self.d = d
 
             def __getitem__(self, indx):
