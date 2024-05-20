@@ -175,7 +175,7 @@ class FlickrTexts:
         return self.flickr_dataset.text[index]
 
 
-def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokenizer, args):
+def flickr_retrieval_evaluation(model, preprocess, tokenizer, args):
     flickr_dataset = FlickDataset(args.flickr_data_dir, transform=preprocess, tokenizer=tokenizer)
     flickr_retrieval_dataloader = DataLoader(
         flickr_dataset,
@@ -202,9 +202,9 @@ def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokeniz
             # texts = texts.to(args.device)
             texts = texts.cuda()
             if args.distributed and not args.horovod:
-                text_features = text_encoder(texts).detach().cpu()
+                text_features = get_model(model).encode_text(texts).detach().cpu()
             else:
-                text_features = text_encoder(texts).detach().cpu()
+                text_features = get_model(model).encode_text(texts).detach().cpu()
             all_text_features.append(text_features)
         all_text_features = torch.cat(all_text_features, dim=0)
 
@@ -215,9 +215,9 @@ def flickr_retrieval_evaluation(image_encoder, text_encoder, preprocess, tokeniz
             images = images.cuda()
 
             if args.distributed and not args.horovod:
-                image_features = image_encoder(images, contrastive=True).detach().cpu()
+                image_features = get_model(model).encode_image(images).detach().cpu()
             else:
-                image_features = image_encoder(images, contrastive=True).detach().cpu()
+                image_features = get_model(model).encode_image(images).detach().cpu()
 
             all_image_features.append(image_features)
         all_image_features = torch.cat(all_image_features, dim=0)
