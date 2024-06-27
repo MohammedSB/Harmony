@@ -122,6 +122,7 @@ def get_args_parser():
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
+    parser.add_argument('--use_bfp16', type=utils.bool_flag, default=False, help="""Can be more stable than fp16.""")
     parser.add_argument('--disc_weight', type=float, default=1, help="""Loss scaling for discriminative path""")
     parser.add_argument('--gen_weight', type=float, default=1, help="""Loss scaling for generative path""")
     parser.add_argument('--mlm_weight', type=float, default=1, help="""Loss scaling for mlm""")
@@ -187,7 +188,7 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
-    parser.add_argument("--local_rank", default=0, type=int, help="Please ignore and do not set this argument.")
+    parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
     return parser
 
 
@@ -309,7 +310,7 @@ def train(args):
 
         # ============ writing logs ... ============
         save_dict = {
-            'model': model.state_dict(),
+            'model': model.module.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch + 1,
             'args': args,
@@ -388,6 +389,8 @@ def train_one_epoch(model, data_loader,
     params_k = [param_k for name_k, param_k in zip(names_k, params_k) if name_k in names_common]
 
     for it, data in enumerate(metric_logger.log_every(data_loader, 10, header)):
+        
+        optimizer.zero_grad()
 
         if len(data) == 3:
             images, captions, masks = data
@@ -408,20 +411,47 @@ def train_one_epoch(model, data_loader,
                 param_group["weight_decay"] = wd_schedule[it]
 
         # teacher and student forward passes + compute loss
-        with torch.cuda.amp.autocast(args.use_fp16):
-            model_output = model(images, epoch, it, masks=masks, captions=captions)
-            loss = model_output["loss"]
+        if args.use_fp16:
+            fp16_type = torch.float16
+        elif args.use_bfp16:
+            fp16_type = torch.bfloat16
+        else:
+            fp16_type = torch.float32
 
+        loss = 0
+        if model.module.is_discriminative: # all of this mess to save mem and use ddp.
+            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+                disc_loss = model(images, epoch, it, masks=masks, captions=captions, path="d")
+            disc_loss.backward()
+            disc_loss = disc_loss.item()
+            loss += disc_loss
+        if model.module.is_contrastive:
+            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+                cont_loss, unscaled_soft_loss = model(images, epoch, it, masks=masks, captions=captions, path="c")
+            cont_loss.backward()
+            cont_loss = cont_loss.item()
+            loss += cont_loss
+        if model.module.meta['use_mlm'] or model.module.meta['use_text_distillation']:
+            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+                txt_loss, mlm_loss, dist_loss = model(images, epoch, it, masks=masks, captions=captions, path="t")
+            txt_loss.backward()
+            txt_loss = txt_loss.item()
+            loss += txt_loss
+        if model.module.is_generative:
+            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+                gen_loss = model(images, epoch, it, masks=masks, captions=captions, path="g")
+            gen_loss.backward()
+            gen_loss = gen_loss.item()
+            loss += gen_loss
+            
         if not math.isfinite(loss):
             print("Loss is {}, stopping training".format(loss), force=True)
             sys.exit(1)
 
         # student update
-        optimizer.zero_grad()
         param_norms = None
         student = model.module.student
         if not args.use_fp16:
-            loss.backward()
             if args.clip_grad:
                 param_norms = utils.clip_gradients(student, args.clip_grad) # we should test clipping entire model.module.
             if model.module.is_discriminative:
@@ -429,7 +459,6 @@ def train_one_epoch(model, data_loader,
                                               args.freeze_last_layer)
             optimizer.step()
         else:   
-            fp16_scaler.scale(loss).backward()
             if args.clip_grad:
                 fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
                 param_norms = utils.clip_gradients(student, args.clip_grad)
@@ -453,18 +482,18 @@ def train_one_epoch(model, data_loader,
 
         # logging
         torch.cuda.synchronize()
-        metric_logger.update(loss=loss.item())
-        if 'disc_loss' in model_output.keys(): metric_logger.update(discriminative_loss=model_output["disc_loss"])
-        if 'gen_loss' in model_output.keys(): metric_logger.update(generative_loss=model_output["gen_loss"])
-        if 'clip_loss' in model_output.keys(): metric_logger.update(clip_loss=model_output["clip_loss"])
-        if 'soft_loss' in model_output.keys(): metric_logger.update(unscaled_soft_loss=model_output['soft_loss'])
-        if 'mlm_loss' in model_output.keys(): metric_logger.update(mlm_loss=model_output['mlm_loss'])
-        if 'text_dist_loss' in model_output.keys(): metric_logger.update(text_dist_loss=model_output['text_dist_loss'])
+        metric_logger.update(loss=loss)
+        if model.module.is_discriminative: metric_logger.update(discriminative_loss=disc_loss)
+        if model.module.is_generative: metric_logger.update(generative_loss=gen_loss)
+        if model.module.is_contrastive: metric_logger.update(clip_loss=cont_loss)
+        if unscaled_soft_loss: metric_logger.update(unscaled_soft_loss=unscaled_soft_loss)
+        if mlm_loss: metric_logger.update(mlm_loss=mlm_loss)
+        if dist_loss: metric_logger.update(text_dist_loss=dist_loss)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])
-        if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[it], 2))    
-    
+        if model.module.is_generative: metric_logger.update(mask_ratio=round(model.module.mask_ratio_scheduler[it], 2))  
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)

@@ -27,6 +27,7 @@ from torchvision import datasets
 from torchvision import transforms as pth_transforms
 from torchvision import models as torchvision_models
 
+import timm
 from Harmony import utils
 import Harmony.models.vision_transformer as vits
 from Harmony.models import Harmony 
@@ -55,7 +56,7 @@ def eval_linear(args):
 
     # ============ building network ... ============
     model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
-    # model = timm.models.create_model(args.arch, num_classes=1000)
+    #model = timm.models.create_model(args.arch)
     model.cuda()
     model.eval()
 

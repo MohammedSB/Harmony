@@ -104,65 +104,70 @@ class Harmony(torch.nn.Module):
             self.teacher.load_state_dict(self.student.state_dict(), strict=False)
             for p in self.teacher.parameters():
                 p.requires_grad = False
+
+    def forward_discriminative(self, images, epoch, iteration, captions=None, masks=None):
+        output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
+        loss = output["loss"] * self.meta["disc_weight"]
+        return loss
             
-    def forward(self, images, epoch, iteration, captions=None, masks=None):
-        loss = torch.tensor([0.0]).to(self.meta['gpu'])
-        outputs = {"loss": loss}
-
+    def forward_contrastive(self, images, epoch, iteration, captions=None, masks=None):
+        # see which teacher model we can use, if any            
         if self.is_discriminative:
-            output = self.discriminative_path(images[1:], epoch, masks=masks) # first image is simply augmeneted image
+            teacher = self.discriminative_path.teacher.backbone
+            # teacher_attn = output["teacher_attn"]  
+        elif self.teacher != None:
+            teacher = self.teacher
+        else:
+            teacher = None
+        teacher_attn = None #TODO: fix this
+        unscaled_soft_loss = None
 
-            outputs["disc_loss"] = output["loss"].item() * self.meta["disc_weight"]
-            outputs["loss"] += (output["loss"] * self.meta["disc_weight"])
+        hard_weight = self.hard_labels_weight_scheduler[iteration]
+        output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
+        loss = output['clip_loss']
+        if 'soft_loss' in output.keys(): unscaled_soft_loss = output['soft_loss'].item()
+        return loss, unscaled_soft_loss
+    
+    def forward_text(self, images, epoch, iteration, captions=None, masks=None):
+        labels = captions.detach().clone()
+        masked_captions, labels, masks_c = get_masked_captions(captions=captions, labels=labels)
+        _, text_embedding = self.contrastive_path.text_backbone(masked_captions, return_without_proj=True)
+        loss = torch.tensor([0.0]).to(self.meta['gpu'])
+        mlm_loss, dist_loss = None, None
+                
+        if self.meta['use_mlm']:
+            mlm_output = self.mlm_head(text_embedding)
+            
+            probs = mlm_output.view(-1, mlm_output.size(-1)) 
+            labels = labels.view(-1)
+
+            mlm_loss = torch.nn.functional.cross_entropy(probs, labels)
+            if torch.isnan(loss):
+                mlm_loss = torch.tensor(0.0) 
+            
+            loss += mlm_loss * self.meta["mlm_weight"]
+            mlm_loss = mlm_loss.item()
+
+        if self.meta['use_text_distillation']:
+            dist_loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
+            loss += dist_loss * self.meta["text_dist_weight"]
+            dist_loss = dist_loss.item()
         
-        if self.is_contrastive:
+        return loss, mlm_loss, dist_loss
 
-            # see which teacher model we can use, if any            
-            if self.is_discriminative:
-                teacher = self.discriminative_path.teacher.backbone
-                teacher_attn = output["teacher_attn"]  
-            elif self.teacher != None:
-                teacher = self.teacher
-                teacher_attn = None
-            else:
-                teacher = None
-                teacher_attn = None
-
-            hard_weight = self.hard_labels_weight_scheduler[iteration]
-            output = self.contrastive_path(images, captions, hard_weight, teacher, teacher_attn)
-
-            if 'soft_loss' in output.keys(): outputs['soft_loss'] = output['soft_loss'].item()
-            outputs["clip_loss"] = output['clip_loss'].item()
-            outputs["loss"] += output['clip_loss']
-
-            if self.meta['use_mlm'] or self.meta['use_text_distillation']:
-                labels = captions.detach().clone()
-                masked_captions, labels, masks_c = get_masked_captions(captions=captions, labels=labels)
-                _, text_embedding = self.contrastive_path.text_backbone(masked_captions, return_without_proj=True)
-                
-            if self.meta['use_mlm']:
-                mlm_output = self.mlm_head(text_embedding)
-                
-                probs = mlm_output.view(-1, mlm_output.size(-1)) 
-                labels = labels.view(-1)
-
-                loss = torch.nn.functional.cross_entropy(probs, labels)
-                if torch.isnan(loss):
-                    loss = torch.tensor(0.0) 
-                
-                outputs["mlm_loss"] = loss.item() * self.meta["mlm_weight"]
-                outputs["loss"] += loss * self.meta["mlm_weight"]
-
-            if self.meta['use_text_distillation']:
-                loss = self.text_distillation_path(captions, masked_captions, masks_c, epoch, text_embedding)
-
-                outputs["text_dist_loss"] = loss.item() * self.meta["text_dist_weight"]
-                outputs["loss"] += loss * self.meta["text_dist_weight"]
-
-        if self.is_generative:
-            output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 
-     
-            outputs["gen_loss"] = output["loss"].item() * self.meta["gen_weight"]
-            outputs["loss"] += (output["loss"] * self.meta["gen_weight"])
-
-        return outputs
+    def forward_generative(self, images, epoch, iteration, captions=None, masks=None):
+        output = self.generative_path(images, reconstruct_global_crops=self.meta['reconstruct_global_crops'], mask_ratio=self.mask_ratio_scheduler[epoch]) 
+        loss = output["loss"] * self.meta["gen_weight"]
+        return loss
+            
+    def forward(self, images, epoch, iteration, captions=None, masks=None, path="d"):
+        if path == "d":
+            return self.forward_discriminative(images, epoch, iteration, captions=captions, masks=masks)
+        elif path == "c":
+            return self.forward_contrastive(images, epoch, iteration, captions=captions, masks=masks)
+        elif path == "t":
+            return self.forward_text(images, epoch, iteration, captions=captions, masks=masks)
+        elif path == "g":
+            return self.forward_generative(images, epoch, iteration, captions=captions, masks=masks)
+        else:
+            raise Exception("Please select one of the four paths")

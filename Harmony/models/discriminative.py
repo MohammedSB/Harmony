@@ -102,7 +102,6 @@ class DiscriminativePath(nn.Module):
 
             loss = self.loss(student_output, teacher_output, epoch)
         elif 'ibot' in self.meta['objective']:
-
             backbone_feat, student_output = self.student(images[:self.meta['global_crops_number']], mask=masks[:self.meta['global_crops_number']], return_backbone_feat=True)
 
             # get local views
