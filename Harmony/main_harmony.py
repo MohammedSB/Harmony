@@ -39,6 +39,7 @@ from Harmony.data.datasets import get_dataset_from_string
 from Harmony.models import Harmony
 from Harmony.data import IBOTLoaderWrapper
 from torch.cuda.amp.grad_scaler import OptState
+from fvcore.nn import FlopCountAnalysis
 
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -88,8 +89,6 @@ def get_args_parser():
     parser.add_argument('--pred_shape', default='block', type=str, help="""Shape of partial prediction.""")
     parser.add_argument('--pred_start_epoch', default=0, type=int, help="""Start epoch to perform masked
         image prediction. We typically set this to 50 for swin transformer. (Default: 0)""")
-    # parser.add_argument('--use_bn_in_head', default=False, type=utils.bool_flag,
-    #     help="Whether to use batch normalizations in projection head (Default: False)")
     parser.add_argument('--mask_ratio', default=0.75, type=float, help="Initial masking ratio for MAE.")
     parser.add_argument('--mask_ratio_end', default=0.75, type=float, help="Final value for masking ratio for MAE, after linear warmup.")
     parser.add_argument('--mask_ratio_epochs', default=10, type=int)
@@ -122,7 +121,7 @@ def get_args_parser():
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
-    parser.add_argument('--use_bfp16', type=utils.bool_flag, default=False, help="""Can be more stable than fp16.""")
+    parser.add_argument('--use_bf16', type=utils.bool_flag, default=False, help="""Can be more stable than fp16""")
     parser.add_argument('--disc_weight', type=float, default=1, help="""Loss scaling for discriminative path""")
     parser.add_argument('--gen_weight', type=float, default=1, help="""Loss scaling for generative path""")
     parser.add_argument('--mlm_weight', type=float, default=1, help="""Loss scaling for mlm""")
@@ -159,6 +158,7 @@ def get_args_parser():
     parser.add_argument('--use_text_distillation', type=utils.bool_flag, default=False)
     parser.add_argument('--attentive_masking', type=utils.bool_flag, default=False)
     parser.add_argument('--random_masking', type=utils.bool_flag, default=False)
+    parser.add_argument('--use_siglip', type=utils.bool_flag, default=False)
     parser.add_argument('--norm_pix_loss', type=utils.bool_flag, default=True)
     parser.add_argument('--hard_labels_weight', type=float, default=1.0, help="""Weight for using the hard labels in CLIP""")
     parser.add_argument('--hard_labels_weight_end', type=float, default=1.0, help="""Final value for hard labels weight in CLIP, after scheduler. 
@@ -289,7 +289,7 @@ def train(args):
     utils.restart_from_checkpoint(
         os.path.join(args.output_dir, "checkpoint.pth"),
         run_variables=to_restore,
-        model=model,
+        model=model.module,
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
         disc_loss=model.module.discriminative_path.loss if model.module.is_discriminative else None
@@ -413,34 +413,48 @@ def train_one_epoch(model, data_loader,
         # teacher and student forward passes + compute loss
         if args.use_fp16:
             fp16_type = torch.float16
-        elif args.use_bfp16:
+        elif args.use_bf16:
             fp16_type = torch.bfloat16
         else:
             fp16_type = torch.float32
 
         loss = 0
+        fp16_or_bf16 = args.use_fp16 or args.use_bf16
         if model.module.is_discriminative: # all of this mess to save mem and use ddp.
-            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+            with torch.cuda.amp.autocast(fp16_or_bf16, dtype=fp16_type):
                 disc_loss = model(images, epoch, it, masks=masks, captions=captions, path="d")
-            disc_loss.backward()
+            if args.use_fp16:
+                fp16_scaler.scale(disc_loss).backward()
+            else:
+                disc_loss.backward()
             disc_loss = disc_loss.item()
             loss += disc_loss
         if model.module.is_contrastive:
-            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+            with torch.cuda.amp.autocast(fp16_or_bf16, dtype=fp16_type):
                 cont_loss, unscaled_soft_loss = model(images, epoch, it, masks=masks, captions=captions, path="c")
-            cont_loss.backward()
+            if args.use_fp16:
+                fp16_scaler.scale(cont_loss).backward()
+            else:
+                cont_loss.backward()
             cont_loss = cont_loss.item()
             loss += cont_loss
+
         if model.module.meta['use_mlm'] or model.module.meta['use_text_distillation']:
-            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+            with torch.cuda.amp.autocast(fp16_or_bf16, dtype=fp16_type):
                 txt_loss, mlm_loss, dist_loss = model(images, epoch, it, masks=masks, captions=captions, path="t")
-            txt_loss.backward()
+            if args.use_fp16:
+                fp16_scaler.scale(txt_loss).backward()
+            else:
+                txt_loss.backward()
             txt_loss = txt_loss.item()
             loss += txt_loss
         if model.module.is_generative:
-            with torch.cuda.amp.autocast(args.use_fp16 or args.use_bfp16, dtype=fp16_type):
+            with torch.cuda.amp.autocast(fp16_or_bf16, dtype=fp16_type):
                 gen_loss = model(images, epoch, it, masks=masks, captions=captions, path="g")
-            gen_loss.backward()
+            if args.use_fp16:
+                fp16_scaler.scale(gen_loss).backward()
+            else:
+                gen_loss.backward()
             gen_loss = gen_loss.item()
             loss += gen_loss
             
@@ -487,8 +501,9 @@ def train_one_epoch(model, data_loader,
         if model.module.is_generative: metric_logger.update(generative_loss=gen_loss)
         if model.module.is_contrastive: metric_logger.update(clip_loss=cont_loss)
         if unscaled_soft_loss: metric_logger.update(unscaled_soft_loss=unscaled_soft_loss)
-        if mlm_loss: metric_logger.update(mlm_loss=mlm_loss)
-        if dist_loss: metric_logger.update(text_dist_loss=dist_loss)
+        if model.module.meta['use_mlm'] or model.module.meta['use_text_distillation']:
+            if mlm_loss: metric_logger.update(mlm_loss=mlm_loss)
+            if dist_loss: metric_logger.update(text_dist_loss=dist_loss)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
         if model.module.is_contrastive: metric_logger.update(clip_hard_weight=model.module.hard_labels_weight_scheduler[it])

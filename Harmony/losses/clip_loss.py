@@ -10,7 +10,8 @@ class CLIPLoss(nn.Module):
         self.labels = None
         self.last_local_batch_size = None
 
-    def forward(self, image_embed, text_embed, logit_scale, image_embed_teacher=None, text_embed_teacher=None, hard_weight=1.0, temp=0.1):
+    def forward(self, image_embed, text_embed, logit_scale, image_embed_teacher=None,
+                text_embed_teacher=None, hard_weight=1.0, temp=0.1, logit_bias=None):
         local_batch_size = image_embed.size(0)
 
         if local_batch_size != self.last_local_batch_size:
@@ -26,15 +27,23 @@ class CLIPLoss(nn.Module):
         # gather features from all GPUs
         image_embed_all, text_embed_all = \
             utils.all_gather_batch_with_grad([image_embed, text_embed])
-        
-        # cosine similarity as logits
-        logits_per_image = logit_scale * image_embed @ text_embed_all.t()
-        logits_per_text = logit_scale * text_embed @ image_embed_all.t()
 
-        image_loss = F.cross_entropy(logits_per_image, self.labels)
-        text_loss = F.cross_entropy(logits_per_text, self.labels)
+        if logit_bias: # proxy for using siglip
+            global_batch_size = image_embed_all.shape[0]
+            logits = (logit_scale * image_embed_all @ text_embed_all.t()) + logit_bias
+            targets = 2 * torch.eye(global_batch_size) - torch.ones(global_batch_size)
+            targets = targets.to(device=image_embed_all.device)
 
-        loss = hard_weight * ((image_loss + text_loss) / 2)
+            loss = -torch.nn.functional.logsigmoid(targets * logits).sum() / global_batch_size
+            loss = hard_weight * loss
+        else:
+            # cosine similarity as logits
+            logits_per_image = logit_scale * image_embed @ text_embed_all.t()
+            logits_per_text = logit_scale * text_embed @ image_embed_all.t()
+
+            image_loss = F.cross_entropy(logits_per_image, self.labels)
+            text_loss = F.cross_entropy(logits_per_text, self.labels)
+            loss = hard_weight * ((image_loss + text_loss) / 2)
 
         return_dict = {}
 

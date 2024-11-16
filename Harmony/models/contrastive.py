@@ -23,6 +23,12 @@ class ContrastivePath(nn.Module):
         self.text_backbone = TextEncoder(embed_dim=text_embed_dim, vocab_size=vocab_size)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
+        self.logit_bias = None
+        if self.meta["use_siglip"]:
+            print("Using SigLIP!")
+            self.logit_scale = nn.Parameter(torch.ones([]) * np.log(10))
+            self.logit_bias = nn.Parameter(torch.ones([]) * -10)
+
         # check if to whether to use labels 
         if self.use_soft_labels:
             print("Using soft labels!")
@@ -68,10 +74,11 @@ class ContrastivePath(nn.Module):
         else:
             image_embed_teacher = None
             text_embed_teacher = None
+    
         output = self.contrastive_loss(image_embed, text_embed, self.logit_scale.exp(),
                                         image_embed_teacher=image_embed_teacher,
                                         text_embed_teacher=text_embed_teacher,
-                                        hard_weight=hard_weight)
+                                        hard_weight=hard_weight, logit_bias=self.logit_bias)
 
         self.image_backbone.masked_im_modeling = self.meta['use_masked_im_modeling']
         self.image_backbone.return_all_tokens = self.meta["return_all_tokens"]

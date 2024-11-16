@@ -114,12 +114,11 @@ class Harmony(torch.nn.Module):
         # see which teacher model we can use, if any            
         if self.is_discriminative:
             teacher = self.discriminative_path.teacher.backbone
-            # teacher_attn = output["teacher_attn"]  
         elif self.teacher != None:
             teacher = self.teacher
         else:
             teacher = None
-        teacher_attn = None #TODO: fix this
+        teacher_attn = None # TODO: fix this
         unscaled_soft_loss = None
 
         hard_weight = self.hard_labels_weight_scheduler[iteration]

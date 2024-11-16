@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--comment', default="", type=str,
                         help='Comment to pass to scheduler, e.g. priority message')
     parser.add_argument("--constraint", default="v100", type=str)
-    parser.add_argument("--mem", default="200GB", type=str)
+    parser.add_argument("--mem", default="300GB", type=str)
     return parser.parse_args()
 
 
@@ -103,7 +103,7 @@ def main():
         kwargs['slurm_comment'] = args.comment
 
     executor.update_parameters(
-        mem_gb=80 * num_gpus_per_node,
+        mem_gb=40 * num_gpus_per_node,
         gpus_per_node=num_gpus_per_node,
         tasks_per_node=num_gpus_per_node,  # one task per GPU
         # cpus_per_task=10,
@@ -112,6 +112,7 @@ def main():
         # Below are cluster dependent parameters
         slurm_partition=partition,
         slurm_signal_delay_s=120,
+        account="conf-cvpr2025-2024.11.15-micheldl",
         slurm_additional_parameters={
             'mem': args.mem,
             'constraint': args.constraint,
