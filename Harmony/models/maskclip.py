@@ -21,6 +21,7 @@ class MaskCLIP(torch.nn.Module):
         self.meta = vars(args)
         if meta_training_data != None:
             self.meta = {**self.meta, **meta_training_data}
+        self.meta["use_siglip"] = False 
         
         # define the model arch 
         self.define_arch() 

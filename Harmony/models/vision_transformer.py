@@ -284,11 +284,11 @@ class VisionTransformer(nn.Module):
         else:
             x = self.prepare_tokens(x)
 
-        x, attension = self.forward_blocks(x)
+        x, attention  = self.forward_blocks(x)
 
-        attension = torch.stack(attension, dim=0)
-        attension = torch.mean(attension, dim=0)
-        attension = attension[:, :, 0, 1:].mean(1).detach()
+        attention  = torch.stack(attention , dim=0)
+        attention  = torch.mean(attention , dim=0)
+        attention  = attention [:, :, 0, 1:].mean(1).detach()
 
         x = self.norm(x)
         if self.fc_norm is not None:
@@ -298,7 +298,7 @@ class VisionTransformer(nn.Module):
             return_all_tokens is None else return_all_tokens
         if return_all_tokens:
             if return_attn:
-                return x, attension
+                return x, attention 
             else:
                 return x
         cls_token = x[:, 0]
@@ -306,15 +306,15 @@ class VisionTransformer(nn.Module):
         if contrastive:
             cls_token = cls_token @ self.contrastive_projection
         if return_attn:
-            return cls_token, attension
+            return cls_token, attention 
         return cls_token
     
     def forward_blocks(self, x):
-        attension = []
+        attention  = []
         for blk in self.blocks:
             x, attn = blk(x, return_attention=True)
-            attension.append(attn)
-        return x, attension
+            attention.append(attn)
+        return x, attention 
 
 
     def get_last_selfattention(self, x):

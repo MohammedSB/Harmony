@@ -23,7 +23,13 @@ from pathlib import Path
 from collections import defaultdict, deque
 from tensorboardX import SummaryWriter
 from timm.utils import get_state_dict
-from torch._six import inf
+
+try:
+    from torch._six import inf  # For PyTorch versions < 1.9
+except ImportError:
+    from math import inf  # For PyTorch versions >= 1.9
+
+
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a

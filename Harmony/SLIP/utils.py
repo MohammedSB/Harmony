@@ -63,10 +63,10 @@ def is_main_process():
 
 def save_on_master(state, output_dir):
     if is_main_process():
-        ckpt_path = f'{output_dir}/checkpoint.pt'
+        epoch = state['epoch']
+        ckpt_path = f'{output_dir}/checkpoint{epoch}.pt'
         main_vit = state['vision_model']
-        ckpt_path_main = f'{output_dir}/main_vit_checkpoint.pt'
-        best_path = f'{output_dir}/checkpoint_best.pt'
+        ckpt_path_main = f'{output_dir}/main_vit_checkpoint{epoch}.pt'
         print(ckpt_path)
         torch.save(state, ckpt_path)
         torch.save(main_vit, ckpt_path_main)

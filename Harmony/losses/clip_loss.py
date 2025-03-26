@@ -31,10 +31,11 @@ class CLIPLoss(nn.Module):
         if logit_bias: # proxy for using siglip
             global_batch_size = image_embed_all.shape[0]
             logits = (logit_scale * image_embed_all @ text_embed_all.t()) + logit_bias
-            targets = 2 * torch.eye(global_batch_size) - torch.ones(global_batch_size)
+            targets = 2 * torch.eye(global_batch_size) - torch.ones((global_batch_size, global_batch_size)) 
+
             targets = targets.to(device=image_embed_all.device)
 
-            loss = -torch.nn.functional.logsigmoid(targets * logits).sum() / global_batch_size
+            loss = -F.logsigmoid(targets * logits).sum() / global_batch_size
             loss = hard_weight * loss
         else:
             # cosine similarity as logits

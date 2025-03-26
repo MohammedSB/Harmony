@@ -118,7 +118,6 @@ def main():
         # Below are cluster dependent parameters
         slurm_partition=partition,
         slurm_signal_delay_s=120,
-        account="conf-cvpr2025-2024.11.15-micheldl",
         slurm_additional_parameters={
             'mem': args.mem,
             'constraint': args.constraint,

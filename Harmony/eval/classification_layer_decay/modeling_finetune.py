@@ -378,6 +378,10 @@ class VisionTransformer(nn.Module):
 
 @register_model
 def vit_small(pretrained=False, **kwargs):
+    # print(kwargs)
+    keys_to_remove = ['pretrained_cfg', 'pretrained_cfg_overlay']
+    for key in keys_to_remove:
+        kwargs.pop(key, None)
     model = VisionTransformer(
         patch_size=16, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)

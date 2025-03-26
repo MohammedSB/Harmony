@@ -112,12 +112,12 @@ class Harmony(torch.nn.Module):
             
     def forward_contrastive(self, images, epoch, iteration, captions=None, masks=None):
         # see which teacher model we can use, if any            
+        teacher = None
         if self.is_discriminative:
             teacher = self.discriminative_path.teacher.backbone
         elif self.teacher != None:
             teacher = self.teacher
-        else:
-            teacher = None
+            
         teacher_attn = None # TODO: fix this
         unscaled_soft_loss = None
 

@@ -58,7 +58,7 @@ class FileListDataset(torch.utils.data.Dataset):
 def get_args_parser():
     parser = argparse.ArgumentParser(description='SLIP 0-shot evaluations', add_help=False)
     parser.add_argument('--output_dir', default='./', type=str, help='output dir')
-    parser.add_argument('--batch_size', default=2, type=int, help='batch_size')
+    parser.add_argument('--batch_size', default=32, type=int, help='batch_size')
     parser.add_argument('-j', '--workers', default=10, type=int, metavar='N',
                         help='number of data loading workers per process')
     parser.add_argument('--image_encoder', default='', type=str, help='path to latest checkpoint')
@@ -73,6 +73,10 @@ def main(args):
     # create model(s)
     image_encoder = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0, can_be_contrastive=True)
     image_encoder.cuda()
+
+    print(image_encoder)
+    print(image_encoder)
+
     image_state_dict = torch.load(args.image_encoder)
     image_state_dict = {k.replace("module.", ""): v for k, v in image_state_dict.items()}
     image_encoder.load_state_dict(image_state_dict, strict=False)
@@ -247,6 +251,9 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
             images = images.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
+            # print(i)
+            # print(len(val_loader))
+
             # encode images
             image_features = image_encoder(images, contrastive=True)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
@@ -273,7 +280,7 @@ def validate_zeroshot(val_loader, templates, labels, image_encoder, text_encoder
                     c = [val_loader.dataset.d.images[int(i_)] for i_ in i]
                 for i_, c_ in enumerate(c):
                     l = {"target": target[i_].item()}
-                    logits_per_image = torch.nn.functional.softmax(logits_per_image, dim=1)    
+                    logits_per_image = torch.nn.functional.softmax(logits_per_image, dim=1)  
                     values, indices = logits_per_image.topk(5, dim=1)
                     l['preds'] = list(indices[i_].tolist())
                     l['probs'] = list(values[i_].tolist())

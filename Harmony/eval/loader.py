@@ -9,7 +9,7 @@ import math
 import numpy as np
 
 from torchvision.datasets import ImageFolder
-import utils as utils
+import Harmony.eval.utils as utils
 
 class ImageFolderInstance(ImageFolder):
     def __getitem__(self, index):

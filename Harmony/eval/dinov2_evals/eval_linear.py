@@ -33,6 +33,8 @@ import Harmony.models.vision_transformer as vits
 from Harmony.models import Harmony 
 from Harmony.eval.metrics import MetricType, build_metric
 from Harmony.data.datasets import get_dataset_from_string
+from Harmony.dinov2.dinov2.eval.setup import setup_and_build_model
+from Harmony.dinov2.dinov2.eval.setup import get_args_parser as get_setup_args_parser
 
 def eval_linear(args):
     utils.init_distributed_mode(args)
@@ -55,14 +57,16 @@ def eval_linear(args):
         print("Settings file not found")
 
     # ============ building network ... ============
-    model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+    # model = vits.__dict__[args.arch](patch_size=args.patch_size, num_classes=0)
+    #model = timm.models.create_model(args.arch)
+    model, autocast_dtype = setup_and_build_model(args, with_dist=False)
     model.cuda()
     model.eval()
 
     embed_dim = model.embed_dim * (args.n_last_blocks + int(args.avgpool_patchtokens))
 
     # load weights to evaluate
-    utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+    # utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
     print(f"Model {args.arch} built.")
 
     linear_classifiers, optim_param_groups = setup_linear_classifiers(
@@ -386,10 +390,10 @@ def get_top_performer(results_dict_temp):
     return best_classifier
 
 if __name__ == '__main__':
-    # parents = []
-    # setup_args_parser = get_setup_args_parser(parents=parents, add_help=False)
-    # parents = [setup_args_parser]
-    parser = argparse.ArgumentParser('Evaluation with linear classification')
+    parents = []
+    setup_args_parser = get_setup_args_parser(parents=parents, add_help=False)
+    parents = [setup_args_parser]
+    parser = argparse.ArgumentParser('Evaluation with linear classification', parents=parents)
     parser.add_argument('--n_last_blocks', default=4, type=int, help="""Concatenate [CLS] tokens
         for the `n` last blocks. We use `n=4` when evaluating ViT-Small and `n=1` with ViT-Base.""")
     parser.add_argument('--avgpool_patchtokens', default=False, type=utils.bool_flag,

@@ -128,36 +128,6 @@ def main(args):
                                     eps=args.eps, weight_decay=args.wd)
     scaler = amp.GradScaler(enabled=not args.disable_amp)
 
-    # optionally resume from a checkpoint (takes precedence over autoresume)
-    # if args.resume:
-    #     if os.path.isfile(args.resume):
-    #         print("=> loading resume checkpoint '{}'".format(args.resume))
-    #         checkpoint = torch.load(args.resume, map_location='cpu')
-    #         epoch = checkpoint['epoch'] if 'epoch' in checkpoint else 0
-    #         args.start_epoch = epoch
-    #         result = model.load_state_dict(checkpoint['state_dict'], strict=False)
-    #         print(result)
-    #         optimizer.load_state_dict(checkpoint['optimizer']) if 'optimizer' in checkpoint else ()
-    #         scaler.load_state_dict(checkpoint['scaler']) if 'scaler' in checkpoint else ()
-    #         # best_acc1 = checkpoint['best_acc1']
-    #         print("=> loaded resume checkpoint '{}' (epoch {})"
-    #               .format(args.resume, epoch))
-    #     else:
-    #         print("=> no checkpoint found at '{}'".format(args.resume))
-    # else:
-    #     # auto-resume from latest checkpoint in output directory
-    #     latest = os.path.join(args.output_dir, 'checkpoint.pt')
-    #     if os.path.isfile(latest):
-    #         print("=> loading latest checkpoint '{}'".format(latest))
-    #         latest_checkpoint = torch.load(latest, map_location='cpu')
-    #         args.start_epoch = latest_checkpoint['epoch']
-    #         model.load_state_dict(latest_checkpoint['state_dict'])
-    #         optimizer.load_state_dict(latest_checkpoint['optimizer'])
-    #         scaler.load_state_dict(latest_checkpoint['scaler'])
-    #         # best_acc1 = latest_checkpoint['best_acc1']
-    #         print("=> loaded latest checkpoint '{}' (epoch {})"
-    #               .format(latest, latest_checkpoint['epoch']))
-
     cudnn.benchmark = True
 
     # Data loading code
@@ -170,46 +140,21 @@ def main(args):
             transforms.ToTensor(),
             normalize
         ])
-    # val_transform = transforms.Compose([
-    #         transforms.Resize(224),
-    #         transforms.CenterCrop(224),
-    #         transforms.ToTensor(),
-    #         normalize
-    #     ])
 
     train_dataset = datasets.get_dataset(train_transform, tokenizer, args)
     cwd = os.path.dirname(os.path.realpath(__file__))
-    # with open(os.path.join(cwd, 'dataset_catalog.json')) as f:
-    #     root = json.load(f)['imagenet']['path']
-    # val_dataset = ImageFolder(os.path.join(root, 'val'), val_transform)
 
     # dist eval resamples data to pad uneven batch sizes
     # make sure num_samples = 0 mod num_gpus for exact acc
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-        # val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset)
     else:
         train_sampler = None
-        # val_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
-    # val_loader = torch.utils.data.DataLoader(
-    #     val_dataset, batch_size=args.batch_size, shuffle=(val_sampler is None),
-    #     num_workers=args.workers, pin_memory=True, sampler=val_sampler, drop_last=False)
-
-    # if args.evaluate:
-    #     if args.model.startswith('SIMCLR'):
-    #         print('zero-shot evaluation not supported with ssl-only model.')
-    #         return
-
-    #     # zero_stats = validate_zeroshot(val_loader, model, tokenizer, args)
-    #     # if utils.is_main_process():
-    #     #     with open(os.path.join(args.output_dir, 'eval_log.txt'), 'a') as f:
-    #     #         f.write(json.dumps(zero_stats) + '\n')
-    #     return
 
     lr_schedule = utils.cosine_scheduler(args.lr, args.lr_end, args.epochs,
         len(train_loader) // args.update_freq, warmup_epochs=args.warmup_epochs, start_warmup_value=args.lr_start)
@@ -220,6 +165,7 @@ def main(args):
 
     print(args)
 
+    start_time = time.time()
     print("=> beginning training")
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -231,15 +177,6 @@ def main(args):
         if (epoch + 1) % args.eval_freq != 0:
             continue
 
-        # if args.model.startswith('SIMCLR'):
-        #     val_stats = {'acc1': -1}
-        #     acc1 = -1
-        # else:
-        #     val_stats = validate_zeroshot(val_loader, model, tokenizer, args)
-        #     acc1 = val_stats['acc1']
-
-        # is_best = acc1 > best_acc1
-        # best_acc1 = max(acc1, best_acc1)
         try:
             model_dict = model.module.state_dict()
             vit_dict = model.module.visual.state_dict()
@@ -247,20 +184,18 @@ def main(args):
             model_dict = model.state_dict()
             vit_dict = model.visual.state_dict()
 
-
-        print("=> saving checkpoint")
-        utils.save_on_master({
-                'epoch': epoch + 1,
-                'state_dict': model_dict,
-                'vision_model': vit_dict,
-                'optimizer' : optimizer.state_dict(),
-                'scaler': scaler.state_dict(),
-                # 'best_acc1': best_acc1,
-                'args': args,
-            }, args.output_dir)
+        if epoch % 10 == 0 or (epoch + 1) == args.epochs:
+            print("=> saving checkpoint")
+            utils.save_on_master({
+                    'epoch': epoch + 1,
+                    'state_dict': model_dict,
+                    'vision_model': vit_dict,
+                    'optimizer' : optimizer.state_dict(),
+                    'scaler': scaler.state_dict(),
+                    'args': args,
+                }, args.output_dir)
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                    #  **{f'test_{k}': v for k, v in val_stats.items()},
                      'epoch': epoch}
 
         if utils.is_main_process():
@@ -268,12 +203,17 @@ def main(args):
                 wandb.log(log_stats)
             with open(os.path.join(args.output_dir, 'log.txt'), 'a') as f:
                 f.write(json.dumps(log_stats) + '\n')
+    
+    import datetime
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print('Training time {}'.format(total_time_str))
 
 
 def train(train_loader, model, criterion, optimizer, scaler, epoch, lr_schedule, args):
     batch_time = AverageMeter('Time', ':6.2f')
     data_time = AverageMeter('Data', ':6.2f')
-    mem = AverageMeter('Mem (GB)', ':6.1f')
+    mem = AverageMeter('Mem (GB)', ':6.3f')
     metric_names = models.get_metric_names(args.model)
     iters_per_epoch = len(train_loader) // args.update_freq
     metrics = OrderedDict([(name, AverageMeter(name, ':.2e')) for name in metric_names])
